@@ -52,7 +52,7 @@ class StatusRepositoryImpl implements StatusRepository {
 
   @override
   Stream<SystemSnapshot> watchStatus({
-    Duration interval = const Duration(seconds: 2),
+    Duration interval = const Duration(seconds: 1),
   }) async* {
     while (true) {
       yield await collect();

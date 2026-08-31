@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
-import 'package:hoopix/core/widgets/tabular_text.dart';
 import 'package:hoopix/features/status/data/repositories/status_repository_impl.dart';
 import 'package:hoopix/features/status/domain/entities/system_snapshot.dart';
 import 'package:hoopix/features/status/domain/repositories/status_repository.dart';
@@ -153,76 +152,16 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
 
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Status',
-                style: HoopixType.largeTitle.copyWith(
-                  color: palette.labelPrimary,
-                ),
-              ),
-              const SizedBox(height: HoopixSpacing.xs),
-              HostSummary(host: snapshot.host),
-            ],
-          ),
+        Text(
+          'Status',
+          style: HoopixType.largeTitle.copyWith(color: palette.labelPrimary),
         ),
-        const SizedBox(width: HoopixSpacing.lg),
-        _LivePill(collectedAt: snapshot.collectedAt),
+        const SizedBox(height: HoopixSpacing.xs),
+        HostSummary(host: snapshot.host),
       ],
-    );
-  }
-}
-
-/// Small "this is updating" affordance. A live dashboard that never
-/// acknowledges its own refresh looks frozen when values happen to be steady.
-class _LivePill extends StatelessWidget {
-  const _LivePill({required this.collectedAt});
-
-  final DateTime collectedAt;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final time = TimeOfDay.fromDateTime(collectedAt);
-    final stamp =
-        '${time.hour.toString().padLeft(2, '0')}:'
-        '${time.minute.toString().padLeft(2, '0')}';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: HoopixSpacing.md,
-        vertical: HoopixSpacing.xs + 2,
-      ),
-      decoration: BoxDecoration(
-        color: palette.surfaceSubtle,
-        borderRadius: BorderRadius.circular(HoopixRadius.pill),
-        border: Border.all(color: palette.separator),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: palette.success,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: HoopixSpacing.sm),
-          TabularText(
-            'Live · $stamp',
-            style: HoopixType.numericCaption.copyWith(
-              color: palette.labelSecondary,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

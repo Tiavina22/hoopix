@@ -9,7 +9,7 @@ class WatchSystemStatus {
 
   final StatusRepository _repository;
 
-  Stream<SystemSnapshot> call({Duration interval = const Duration(seconds: 2)}) {
+  Stream<SystemSnapshot> call({Duration interval = const Duration(seconds: 1)}) {
     return _repository.watchStatus(interval: interval);
   }
 }

@@ -9,7 +9,7 @@ import 'package:hoopix/features/status/presentation/screens/status_screen.dart';
 class _FakeStatusRepository implements StatusRepository {
   @override
   Stream<SystemSnapshot> watchStatus({
-    Duration interval = const Duration(seconds: 2),
+    Duration interval = const Duration(seconds: 1),
   }) {
     return Stream.value(
       SystemSnapshot(
@@ -49,7 +49,6 @@ void main() {
     // Live numbers go through TabularText, which lays each digit out in its
     // own cell and publishes the whole value as one semantics label.
     expect(find.bySemanticsLabel('15%'), findsOneWidget); // 10% user + 5% sys
-    expect(find.bySemanticsLabel('Live · 09:05'), findsOneWidget);
 
     semantics.dispose();
   });

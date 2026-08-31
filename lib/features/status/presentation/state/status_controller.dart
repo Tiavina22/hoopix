@@ -15,7 +15,7 @@ class StatusController extends ChangeNotifier {
   SystemSnapshot? snapshot;
   Object? error;
 
-  void start({Duration interval = const Duration(seconds: 2)}) {
+  void start({Duration interval = const Duration(seconds: 1)}) {
     _subscription?.cancel();
     _subscription = _watchSystemStatus(interval: interval).listen(
       (value) {
