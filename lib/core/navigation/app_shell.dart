@@ -4,14 +4,18 @@ import 'package:hoopix/core/navigation/hoopix_section.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
+import 'package:hoopix/core/theme/theme_controller.dart';
 import 'package:hoopix/core/widgets/placeholder_screen.dart';
+import 'package:hoopix/features/settings/presentation/screens/settings_screen.dart';
 import 'package:hoopix/features/status/presentation/screens/status_screen.dart';
 
-/// Sidebar + content shell. Only [HoopixSection.status] renders a real
-/// screen; everything else renders [PlaceholderScreen] until its own feature
-/// module exists.
+/// Sidebar + content shell. Only [HoopixSection.status] and
+/// [HoopixSection.settings] render a real screen; everything else renders
+/// [PlaceholderScreen] until its own feature module exists.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, required this.themeController});
+
+  final ThemeController themeController;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -37,14 +41,20 @@ class _AppShellState extends State<AppShell> {
             selected: _selected,
             onSelected: (section) => setState(() => _selected = section),
           ),
-          Expanded(
-            child: _selected == HoopixSection.status
-                ? const StatusScreen()
-                : PlaceholderScreen(section: _selected),
-          ),
+          Expanded(child: _content(_selected)),
         ],
       ),
     );
+  }
+
+  Widget _content(HoopixSection section) {
+    return switch (section) {
+      HoopixSection.status => const StatusScreen(),
+      HoopixSection.settings => SettingsScreen(
+        themeController: widget.themeController,
+      ),
+      _ => PlaceholderScreen(section: section),
+    };
   }
 }
 

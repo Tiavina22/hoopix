@@ -25,6 +25,11 @@ abstract final class HoopixColorRamp {
   static const ink500 = Color(0xFF676266);
   static const ink900 = Color(0xFF1B1A1C);
 
+  /// True black, used only for the dark-mode window background — every
+  /// other dark surface stays on the `night*` ramp so panels remain
+  /// distinguishable against it.
+  static const trueBlack = Color(0xFF000000);
+
   static const night0 = Color(0xFF141315);
   static const night50 = Color(0xFF1A191B);
   static const night100 = Color(0xFF1E1D20);
@@ -73,7 +78,7 @@ class HoopixPalette extends ThemeExtension<HoopixPalette> {
     brand: HoopixColorRamp.rose600,
     brandStrong: HoopixColorRamp.rose500,
     brandSubtle: HoopixColorRamp.rose100,
-    windowBackground: HoopixColorRamp.sand50,
+    windowBackground: HoopixColorRamp.sand0,
     sidebarBackground: HoopixColorRamp.sand100,
     surface: HoopixColorRamp.sand0,
     surfaceSubtle: HoopixColorRamp.sand50,
@@ -91,7 +96,7 @@ class HoopixPalette extends ThemeExtension<HoopixPalette> {
     brand: HoopixColorRamp.rose400,
     brandStrong: HoopixColorRamp.rose300,
     brandSubtle: Color(0xFF3A1C24),
-    windowBackground: HoopixColorRamp.night0,
+    windowBackground: HoopixColorRamp.trueBlack,
     sidebarBackground: HoopixColorRamp.night50,
     surface: HoopixColorRamp.night200,
     surfaceSubtle: HoopixColorRamp.night100,
