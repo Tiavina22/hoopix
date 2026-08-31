@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:hoopix/core/theme/theme_preferences.dart';
 
-/// Drives the app's light/dark mode. Starts from the OS setting so the app
-/// matches the system on first launch, then switches instantly wherever a
-/// listener rebuilds — no restart needed.
+/// Drives the app's light/dark mode. Restores the user's last explicit
+/// choice via [ThemePreferences]; only falls back to the OS setting on a
+/// genuine first launch. Switches instantly wherever a listener rebuilds —
+/// no restart needed.
 class ThemeController extends ValueNotifier<ThemeMode> {
-  ThemeController() : super(_systemThemeMode());
+  ThemeController() : super(ThemePreferences.load() ?? _systemThemeMode());
 
   static ThemeMode _systemThemeMode() {
     final brightness = SchedulerBinding.instance.platformDispatcher.platformBrightness;
@@ -16,5 +18,6 @@ class ThemeController extends ValueNotifier<ThemeMode> {
 
   void setDark(bool isDark) {
     value = isDark ? ThemeMode.dark : ThemeMode.light;
+    ThemePreferences.save(value);
   }
 }
