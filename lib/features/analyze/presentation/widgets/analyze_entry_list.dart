@@ -6,6 +6,7 @@ import 'package:hoopix/core/utils/byte_format.dart';
 import 'package:hoopix/core/widgets/ring_gauge.dart';
 import 'package:hoopix/core/widgets/tabular_text.dart';
 import 'package:hoopix/features/analyze/domain/entities/analyze_entry.dart';
+import 'package:hoopix/features/analyze/domain/entities/entry_hint.dart';
 import 'package:hoopix/features/analyze/presentation/widgets/overview_label.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
@@ -19,12 +20,23 @@ class AnalyzeEntryList extends StatelessWidget {
     required this.totalBytes,
     required this.onOpen,
     required this.onReveal,
+    required this.onTrash,
+    required this.isSelected,
+    required this.onToggleSelection,
+    required this.hasSelection,
   });
 
   final List<AnalyzeEntry> entries;
   final int? totalBytes;
   final ValueChanged<AnalyzeEntry> onOpen;
   final ValueChanged<AnalyzeEntry> onReveal;
+  final ValueChanged<AnalyzeEntry> onTrash;
+  final bool Function(AnalyzeEntry) isSelected;
+  final ValueChanged<AnalyzeEntry> onToggleSelection;
+
+  /// Once anything is ticked, every row shows its box — otherwise the boxes
+  /// only appear under the pointer.
+  final bool hasSelection;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +50,10 @@ class AnalyzeEntryList extends StatelessWidget {
           fraction: entry.fractionOf(totalBytes),
           onOpen: () => onOpen(entry),
           onReveal: () => onReveal(entry),
+          onTrash: () => onTrash(entry),
+          isSelected: isSelected(entry),
+          onToggleSelection: () => onToggleSelection(entry),
+          showSelection: hasSelection,
         );
       },
     );
@@ -50,12 +66,20 @@ class _AnalyzeEntryRow extends StatefulWidget {
     required this.fraction,
     required this.onOpen,
     required this.onReveal,
+    required this.onTrash,
+    required this.isSelected,
+    required this.onToggleSelection,
+    required this.showSelection,
   });
 
   final AnalyzeEntry entry;
   final double fraction;
   final VoidCallback onOpen;
   final VoidCallback onReveal;
+  final VoidCallback onTrash;
+  final bool isSelected;
+  final VoidCallback onToggleSelection;
+  final bool showSelection;
 
   @override
   State<_AnalyzeEntryRow> createState() => _AnalyzeEntryRowState();
@@ -91,6 +115,24 @@ class _AnalyzeEntryRowState extends State<_AnalyzeEntryRow> {
           ),
           child: Row(
             children: [
+              SizedBox(
+                width: 22,
+                child: Visibility(
+                  visible: widget.showSelection || _isHovered || widget.isSelected,
+                  maintainSize: true,
+                  maintainAnimation: true,
+                  maintainState: true,
+                  child: Checkbox(
+                    value: widget.isSelected,
+                    onChanged: (_) => widget.onToggleSelection(),
+                    activeColor: palette.brand,
+                    side: BorderSide(color: palette.labelTertiary),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ),
+              const SizedBox(width: HoopixSpacing.xs),
               Icon(
                 entry.isDirectory
                     ? Icons.folder_outlined
@@ -109,6 +151,7 @@ class _AnalyzeEntryRowState extends State<_AnalyzeEntryRow> {
                   style: HoopixType.body.copyWith(color: palette.labelPrimary),
                 ),
               ),
+              _EntryHint(entry: entry),
               const SizedBox(width: HoopixSpacing.md),
               SizedBox(
                 width: 96,
@@ -139,25 +182,108 @@ class _AnalyzeEntryRowState extends State<_AnalyzeEntryRow> {
                 ),
               ),
               const SizedBox(width: HoopixSpacing.sm),
-              // Kept in the layout at all times so rows don't shift width on
-              // hover; only its visibility changes.
-              Opacity(
-                opacity: _isHovered ? 1 : 0,
-                child: IconButton(
-                  onPressed: _isHovered ? widget.onReveal : null,
-                  icon: const Icon(Icons.launch, size: 14),
-                  color: palette.labelSecondary,
-                  tooltip: l10n.analyzeRevealInFinder,
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 28,
-                    height: 28,
-                  ),
-                  padding: EdgeInsets.zero,
+              // Held in the layout at all times so rows don't shift width on
+              // hover. Hidden means genuinely gone, not transparent: an
+              // invisible button that still takes clicks is a trap, and one
+              // whose callback is gated on hover is dead whenever the hover
+              // state is stale.
+              Visibility(
+                visible: _isHovered,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _RowAction(
+                      icon: Icons.launch,
+                      tooltip: l10n.analyzeRevealInFinder,
+                      color: palette.labelSecondary,
+                      onPressed: widget.onReveal,
+                    ),
+                    _RowAction(
+                      icon: Icons.delete_outline,
+                      tooltip: l10n.analyzeMoveToTrash,
+                      color: palette.danger,
+                      onPressed: widget.onTrash,
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One compact icon button in a row's hover actions.
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 14),
+      color: color,
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+      padding: EdgeInsets.zero,
+    );
+  }
+}
+
+/// The one-glance signal beside a row: that a directory is regenerable, or
+/// that it has gone untouched for a long time. Cleanable wins when both
+/// apply, because it is the actionable one — the same precedence as Mole's
+/// entry hint.
+class _EntryHint extends StatelessWidget {
+  const _EntryHint({required this.entry});
+
+  final AnalyzeEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
+
+    if (isCleanableDirectory(entry)) {
+      return Padding(
+        padding: const EdgeInsets.only(left: HoopixSpacing.sm),
+        child: Tooltip(
+          message: l10n.analyzeCleanableHint,
+          child: Icon(
+            Icons.cleaning_services_outlined,
+            size: 13,
+            color: palette.warning,
+          ),
+        ),
+      );
+    }
+
+    final unused = unusedForLabel(entry.accessed);
+    if (unused == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(left: HoopixSpacing.sm),
+      child: Tooltip(
+        message: l10n.analyzeUnusedHint,
+        child: Text(
+          unused,
+          style: HoopixType.caption.copyWith(color: palette.labelTertiary),
         ),
       ),
     );

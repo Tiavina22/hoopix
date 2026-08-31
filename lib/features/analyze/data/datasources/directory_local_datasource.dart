@@ -1,142 +1,132 @@
-import 'dart:io';
-
-import 'package:hoopix/core/platform/disk_usage.dart';
-import 'package:hoopix/core/process/process_runner.dart';
-import 'package:hoopix/features/analyze/data/datasources/size_probe.dart';
+import 'package:hoopix/core/platform/directory_scanner.dart';
+import 'package:hoopix/features/analyze/data/datasources/directory_cache.dart';
 import 'package:hoopix/features/analyze/data/models/analyze_entry_model.dart';
 import 'package:hoopix/features/analyze/domain/entities/analyze_entry.dart';
 import 'package:hoopix/features/analyze/domain/entities/directory_scan.dart';
 
+/// Past the 30 biggest entries in a directory, a row stops being a cleanup
+/// signal — it is noise. Same cap as Mole's interactive scan
+/// (`scanPathConcurrent`'s default `maxEntries`). [totalBytes] always
+/// reflects every child, capped or not: only the list is trimmed, never the
+/// number at the top. [capEntries] disables the trim for the export path,
+/// mirroring Mole's separate `scanPathConcurrentAllEntries`.
+const maxDisplayedEntries = 30;
+
 /// Lists a directory and sizes its children, emitting a new [DirectoryScan]
 /// every time a size lands.
 ///
-/// Sizes are gathered as one `du -s` per child directory rather than a single
-/// `du -d 1` over the parent, because measured on a real home directory the
-/// single call takes 95–120s (the serial sum of every child) before printing
-/// anything, while individual children mostly return in well under two
-/// seconds. Fanning out means the list is usable immediately and only the
-/// genuinely heavy directories arrive late.
+/// The walk itself is native. One `du` per child would be simpler, but two
+/// separate `du` runs cannot deduplicate a hardlinked file between them, so
+/// a file with links under two sibling folders would be counted twice.
+/// Mole's analyzer walks the tree for the same reason, holding one
+/// `(dev, ino)` set across the whole scan.
 ///
-/// Files never go through `du` at all — a plain file's size comes from its
-/// own `stat`. That also sidesteps BSD `du`'s `-a`/`-d` being mutually
-/// exclusive, which makes "files *and* one-level directory totals"
-/// impossible to ask for in a single invocation on macOS.
+/// Files carry their final size from the listing itself; only directories
+/// are still pending when the first frame is drawn.
 class DirectoryLocalDataSource {
-  DirectoryLocalDataSource(
-    ProcessRunner processRunner, {
-    DiskUsage diskUsage = const DiskUsage(),
-  }) : _probe = SizeProbe(processRunner),
-       _diskUsage = diskUsage;
+  const DirectoryLocalDataSource(this._scanner, this._cache);
 
-  final SizeProbe _probe;
-  final DiskUsage _diskUsage;
+  final DirectoryScanner _scanner;
+  final DirectoryCache _cache;
 
-  Stream<DirectoryScan> watch(String path) async* {
-    final List<AnalyzeEntry> children;
-    try {
-      children = await _listChildren(path);
-    } on FileSystemException catch (error) {
-      yield DirectoryScan(
-        path: path,
-        status: _statusForListFailure(error),
-        error: error,
-      );
-      return;
-    } on Object catch (error) {
-      yield DirectoryScan(
-        path: path,
-        status: DirectoryScanStatus.failed,
-        error: error,
-      );
-      return;
-    }
-
-    var entries = sortedBySize(children);
-    final pendingPaths = [
-      for (final entry in entries)
-        if (entry.isDirectory) entry.path,
-    ];
-
-    if (pendingPaths.isEmpty) {
-      yield DirectoryScan(
-        path: path,
-        status: DirectoryScanStatus.loaded,
-        entries: entries,
-        totalBytes: knownTotal(entries),
-      );
-      return;
-    }
-
-    // First paint: every row is already there with its name and icon, and
-    // files already carry their final size. Only directory sizes are pending.
-    yield DirectoryScan(
-      path: path,
-      status: DirectoryScanStatus.scanning,
-      entries: entries,
-      totalBytes: knownTotal(entries),
-    );
-
-    var completed = 0;
-    await for (final probe in SizeProbe.pool(pendingPaths, _probe.sizeOf)) {
-      entries = sortedBySize(withSize(entries, probe.key, probe.sizeBytes));
-      completed++;
-      yield DirectoryScan(
-        path: path,
-        status: completed == pendingPaths.length
-            ? DirectoryScanStatus.loaded
-            : DirectoryScanStatus.scanning,
-        entries: entries,
-        totalBytes: knownTotal(entries),
-      );
-    }
-  }
-
-  Future<List<AnalyzeEntry>> _listChildren(String path) async {
-    final directories = <String>[];
-    final files = <String>[];
-
-    await for (final entity in Directory(path).list(followLinks: false)) {
-      // Symlinks are neither followed nor sized in this version, matching
-      // `du -P` and avoiding cycles and double counting.
-      if (entity is Link) continue;
-      if (entity is Directory) {
-        directories.add(entity.path);
-      } else if (entity is File) {
-        files.add(entity.path);
+  Stream<DirectoryScan> watch(String path, {bool capEntries = true}) async* {
+    // A directory visited before paints from what was recorded then, so
+    // coming back is immediate. The real walk runs behind it and corrects
+    // whatever moved. The cache only ever holds the capped list, so an
+    // uncapped caller (export) skips it rather than showing a truncated
+    // first paint it did not ask for.
+    if (capEntries) {
+      final remembered = _cache.load(path, allowStale: true);
+      if (remembered != null) {
+        yield DirectoryScan(
+          path: path,
+          status: DirectoryScanStatus.scanning,
+          entries: remembered.entries,
+          totalBytes: remembered.totalBytes,
+          totalEntryCount: remembered.totalEntryCount,
+        );
       }
     }
 
-    // Files are sized by what they occupy on disk, the same measure `du`
-    // reports for the directories beside them. One unreadable file is a
-    // missing size on its row, not a failed listing.
-    final fileSizes = await _diskUsage.actualSizes(files);
+    var entries = <AnalyzeEntry>[];
+    var pending = 0;
+    var sized = 0;
+    var listed = false;
 
-    return [
-      for (final directory in directories)
-        AnalyzeEntryModel(
-          path: directory,
-          name: basename(directory),
-          isDirectory: true,
-        ),
-      for (final (index, file) in files.indexed)
-        AnalyzeEntryModel(
-          path: file,
-          name: basename(file),
-          isDirectory: false,
-          sizeBytes: fileSizes[index],
-        ),
-    ];
-  }
+    DirectoryScan frame(DirectoryScanStatus status) {
+      final sorted = sortedBySize(entries);
+      return DirectoryScan(
+        path: path,
+        status: status,
+        entries: capEntries ? capped(sorted) : sorted,
+        // The true total over every child, regardless of how many rows are
+        // shown — the number at the top never lies about what the trimmed
+        // list leaves out.
+        totalBytes: knownTotal(entries),
+        totalEntryCount: entries.length,
+      );
+    }
 
-  DirectoryScanStatus _statusForListFailure(FileSystemException error) {
-    const eperm = 1;
-    const eacces = 13;
-    final code = error.osError?.errorCode;
-    return code == eperm || code == eacces
-        ? DirectoryScanStatus.permissionDenied
-        : DirectoryScanStatus.failed;
+    await for (final event in _scanner.scan(path)) {
+      switch (event) {
+        case ScanFailed():
+          yield DirectoryScan(
+            path: path,
+            status: event.isPermissionDenied
+                ? DirectoryScanStatus.permissionDenied
+                : DirectoryScanStatus.failed,
+            error: event.reason,
+          );
+          return;
+
+        case ScanEntry():
+          entries.add(
+            AnalyzeEntryModel(
+              path: event.path,
+              name: basename(event.path),
+              isDirectory: event.isDirectory,
+              sizeBytes: event.sizeBytes,
+              accessed: event.accessed,
+            ),
+          );
+
+        case ScanListed():
+          // First paint: every row is present and named, files already
+          // final, directories still measuring.
+          listed = true;
+          pending = event.pending;
+          yield frame(
+            pending == 0
+                ? DirectoryScanStatus.loaded
+                : DirectoryScanStatus.scanning,
+          );
+
+        case ScanSize():
+          sized++;
+          entries = withSize(entries, event.path, event.sizeBytes);
+          yield frame(
+            listed && sized >= pending
+                ? DirectoryScanStatus.loaded
+                : DirectoryScanStatus.scanning,
+          );
+
+        case ScanComplete():
+          final complete = frame(DirectoryScanStatus.loaded);
+          if (capEntries) {
+            _cache.store(path, complete, deduped: event.deduped);
+          }
+          yield complete;
+      }
+    }
   }
 }
+
+/// The 30 biggest entries of an already-sorted list, or all of it when it
+/// does not reach the cap.
+List<AnalyzeEntry> capped(List<AnalyzeEntry> sorted) =>
+    sorted.length > maxDisplayedEntries
+        ? sorted.sublist(0, maxDisplayedEntries)
+        : sorted;
 
 List<AnalyzeEntry> withSize(
   List<AnalyzeEntry> entries,

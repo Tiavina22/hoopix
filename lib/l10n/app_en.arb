@@ -29,6 +29,12 @@
   "darkModeLabel": "Dark Mode",
   "languageCardTitle": "Language",
 
+  "analyzeLocalSnapshotsNote": "{count, plural, one{{count} Time Machine local snapshot} other{{count} Time Machine local snapshots}} — snapshot-only space isn\u2019t listed below.",
+  "@analyzeLocalSnapshotsNote": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "analyzeOverviewBreadcrumb": "Overview",
   "analyzeRowHome": "Home",
   "analyzeRowUserLibrary": "User Library",
@@ -36,6 +42,73 @@
   "analyzeRowSystemLibrary": "System Library",
   "analyzeRowIosBackups": "iOS Backups",
   "analyzeRowOldDownloads": "Old Downloads (90d+)",
+  "analyzeCleanableHint": "Regenerable — safe to remove, costs time not data.",
+  "analyzeUnusedHint": "Not opened in a long time.",
+  "analyzeFilterHint": "Filter",
+  "analyzeNoMatches": "Nothing matches that filter.",
+  "analyzeSelectedCount": "{count, plural, one{{count} selected} other{{count} selected}}",
+  "@analyzeSelectedCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "analyzeClearSelection": "Clear",
+  "analyzeTrashTitleCount": "{count, plural, one{Move 1 item to the Trash?} other{Move {count} items to the Trash?}}",
+  "@analyzeTrashTitleCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "analyzeTrashedCount": "{count, plural, one{Moved 1 item to the Trash.} other{Moved {count} items to the Trash.}}",
+  "@analyzeTrashedCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "analyzeTrashRefusedCount": "{count, plural, one{1 item could not be moved.} other{{count} items could not be moved.}}",
+  "@analyzeTrashRefusedCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "analyzeCancel": "Cancel",
+  "analyzeMoveToTrash": "Move to Trash",
+  "analyzeTrashTitle": "Move “{name}” to the Trash?",
+  "@analyzeTrashTitle": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "analyzeTrashBody": "You can put it back from the Trash.",
+  "analyzeTrashBodyWithSize": "Frees {size}. You can put it back from the Trash.",
+  "@analyzeTrashBodyWithSize": {
+    "placeholders": {
+      "size": { "type": "String" }
+    }
+  },
+  "analyzeTrashed": "Moved {name} to the Trash.",
+  "@analyzeTrashed": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "analyzeTrashFailed": "Couldn't move {name}: {reason}",
+  "@analyzeTrashFailed": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "reason": { "type": "String" }
+    }
+  },
+
+  "analyzeShowingLargest": "Showing the {shown} largest of {total}.",
+  "@analyzeShowingLargest": {
+    "placeholders": {
+      "shown": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "analyzeCopyJson": "Copy as JSON",
+  "analyzeCopiedJson": "Copied as JSON.",
   "analyzeViewFolders": "Folders",
   "analyzeViewLargestFiles": "Largest files",
   "analyzeNoLargeFiles": "No files over 100 MB here.",

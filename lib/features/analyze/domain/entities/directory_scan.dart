@@ -27,14 +27,27 @@ class DirectoryScan {
     this.entries = const [],
     this.totalBytes,
     this.error,
-  });
+    int? totalEntryCount,
+  }) : _totalEntryCount = totalEntryCount;
 
   final String path;
   final DirectoryScanStatus status;
 
   /// Sorted by size descending; entries whose size is not known yet sort
-  /// last so the list doesn't reshuffle around them.
+  /// last so the list doesn't reshuffle around them. The directory
+  /// datasource caps this at the 30 biggest, so it can hold fewer rows than
+  /// [totalEntryCount].
   final List<AnalyzeEntry> entries;
+
+  /// Null for callers (the overview, tests) that never cap, in which case
+  /// [totalEntryCount] falls back to `entries.length`. Kept nullable rather
+  /// than defaulted in the constructor, because `entries.length` is not a
+  /// compile-time constant and this class has a `const` constructor.
+  final int? _totalEntryCount;
+
+  /// How many children the directory actually has, regardless of how many
+  /// [entries] lists.
+  int get totalEntryCount => _totalEntryCount ?? entries.length;
 
   /// Sum of the sizes known so far — the denominator for row proportions.
   final int? totalBytes;

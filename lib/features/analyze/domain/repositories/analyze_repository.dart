@@ -18,4 +18,13 @@ abstract class AnalyzeRepository {
   /// Opens the path in Finder. Non-destructive; returns false if Finder
   /// could not be asked (the caller surfaces that, it is never fatal).
   Future<bool> revealInFinder(String path);
+
+  /// Moves [paths] to the Trash, from where the user can put them back.
+  /// Returns the ones that were refused or failed, mapped to why; an empty
+  /// map means all of them were moved.
+  Future<Map<String, String>> moveToTrash(List<String> paths);
+
+  /// Local Time Machine snapshot count, shown only on the overview. Null
+  /// when the probe failed — nothing to report, not zero.
+  Future<int?> localSnapshotCount();
 }

@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hoopix/features/analyze/domain/entities/analyze_entry.dart';
 import 'package:hoopix/features/analyze/domain/entities/directory_scan.dart';
+import 'package:hoopix/features/analyze/domain/usecases/build_analyze_json.dart';
 import 'package:hoopix/features/analyze/domain/usecases/find_large_files.dart';
+import 'package:hoopix/features/analyze/domain/usecases/get_local_snapshot_count.dart';
+import 'package:hoopix/features/analyze/domain/usecases/move_to_trash.dart';
 import 'package:hoopix/features/analyze/domain/usecases/reveal_in_finder.dart';
 import 'package:hoopix/features/analyze/domain/usecases/watch_directory.dart';
 
@@ -34,13 +37,17 @@ class AnalyzeController extends ChangeNotifier {
   AnalyzeController(
     this._watchDirectory,
     this._findLargeFiles,
-    this._revealInFinder, {
+    this._revealInFinder,
+    this._moveToTrash,
+    this._getLocalSnapshotCount, {
     required this.homePath,
   });
 
   final WatchDirectory _watchDirectory;
   final FindLargeFiles _findLargeFiles;
   final RevealInFinder _revealInFinder;
+  final MoveToTrash _moveToTrash;
+  final GetLocalSnapshotCount _getLocalSnapshotCount;
 
   /// Where the largest-files search starts from while the overview — which
   /// is not itself a directory — is showing.
@@ -67,6 +74,15 @@ class AnalyzeController extends ChangeNotifier {
 
   bool get isOverview => currentPath == overviewPath;
 
+  /// Local Time Machine snapshots quietly hold space no row in the listing
+  /// accounts for, so the overview says how many exist. Null until the
+  /// probe answers, or when it fails — both read as "say nothing".
+  int? localSnapshotCount;
+
+  /// Invalidates an in-flight snapshot probe the moment navigation moves on,
+  /// the same pattern [_requestedPath] uses for the directory stream.
+  int _snapshotRequestId = 0;
+
   AnalyzeView view = AnalyzeView.entries;
   List<AnalyzeEntry>? largeFiles;
   bool isLoadingLargeFiles = false;
@@ -81,6 +97,64 @@ class AnalyzeController extends ChangeNotifier {
   String? _requestedLargeFilesRoot;
 
   void start() => open(overviewPath);
+
+  /// Rows ticked for a batch action, held by path rather than by index so a
+  /// list that re-sorts under them cannot move the selection onto something
+  /// else.
+  final Set<String> selected = {};
+
+  bool isSelected(AnalyzeEntry entry) => selected.contains(entry.path);
+
+  void toggleSelection(AnalyzeEntry entry) {
+    if (!selected.remove(entry.path)) selected.add(entry.path);
+    notifyListeners();
+  }
+
+  void clearSelection() {
+    if (selected.isEmpty) return;
+    selected.clear();
+    notifyListeners();
+  }
+
+  /// The ticked rows, in the order they are shown.
+  List<AnalyzeEntry> get selectedEntries => [
+    for (final entry in visibleEntries)
+      if (selected.contains(entry.path)) entry,
+  ];
+
+  /// Total of the ticked rows whose size is known.
+  int get selectedBytes => selectedEntries.fold(
+    0,
+    (total, entry) => total + (entry.sizeBytes ?? 0),
+  );
+
+  /// Case-insensitive substring, matched against the row's name or its path,
+  /// applied to whichever list is showing. Empty means no filter.
+  String filter = '';
+
+  void setFilter(String value) {
+    if (filter == value) return;
+    filter = value;
+    notifyListeners();
+  }
+
+  List<AnalyzeEntry> _filtered(List<AnalyzeEntry> entries) {
+    if (filter.isEmpty) return entries;
+    final needle = filter.toLowerCase();
+    return [
+      for (final entry in entries)
+        if (entry.name.toLowerCase().contains(needle) ||
+            entry.path.toLowerCase().contains(needle))
+          entry,
+    ];
+  }
+
+  /// The rows to render: the current listing or file list, filtered.
+  List<AnalyzeEntry> get visibleEntries => _filtered(
+    view == AnalyzeView.largeFiles
+        ? (largeFiles ?? const [])
+        : (scan?.entries ?? const []),
+  );
 
   void showEntries() {
     if (view == AnalyzeView.entries) return;
@@ -109,19 +183,32 @@ class AnalyzeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Navigates to [path]: the view, the file search and the filter all
+  /// belonged to where the user was, not to where they are going.
   void open(String path) {
-    // A listing and a file search belong to the directory they were started
-    // from; moving means both are dropped rather than shown under the new one.
     view = AnalyzeView.entries;
     largeFiles = null;
     largeFilesError = null;
     isLoadingLargeFiles = false;
     _requestedLargeFilesRoot = null;
+    filter = '';
+    selected.clear();
+    _reload(path);
+  }
+
+  /// Re-reads the current directory without disturbing the view or the
+  /// filter — what a refresh after a delete needs.
+  void _reload(String path) {
+    // Bumped unconditionally, so a probe already in flight can never land
+    // after navigation moved on to somewhere it no longer applies.
+    _snapshotRequestId++;
 
     if (path == overviewPath) {
       _rootPath = null;
       _rootLabel = null;
       _rootKind = null;
+      localSnapshotCount = null;
+      unawaited(_fetchLocalSnapshotCount());
     }
 
     _subscription?.cancel();
@@ -149,6 +236,14 @@ class AnalyzeController extends ChangeNotifier {
     );
   }
 
+  Future<void> _fetchLocalSnapshotCount() async {
+    final requestId = _snapshotRequestId;
+    final count = await _getLocalSnapshotCount();
+    if (requestId != _snapshotRequestId) return;
+    localSnapshotCount = count;
+    notifyListeners();
+  }
+
   void openChild(AnalyzeEntry entry) {
     if (!entry.isDirectory) return;
     if (isOverview) {
@@ -161,7 +256,54 @@ class AnalyzeController extends ChangeNotifier {
 
   void retry() => open(currentPath);
 
+  /// The current listing as JSON, matching Mole's `--json` field names —
+  /// see [buildAnalyzeJson] for the one scope difference. Null while nothing
+  /// has loaded yet.
+  String? exportJson() {
+    final current = scan;
+    if (current == null) return null;
+    return buildAnalyzeJson(current, isOverview: isOverview, largeFiles: largeFiles);
+  }
+
   Future<bool> reveal(AnalyzeEntry entry) => _revealInFinder(entry.path);
+
+  /// Moves [entry] to the Trash and refreshes the view it came from.
+  ///
+  /// Returns the reason it was refused, or null when it was moved. The
+  /// refusal comes from the native side, which is where the protected-path
+  /// rules live — this only reports it.
+  Future<String?> moveToTrash(AnalyzeEntry entry) async {
+    final failures = await _trash([entry.path]);
+    return failures[entry.path];
+  }
+
+  /// Moves every ticked row. Returns the ones that were refused, mapped to
+  /// why; a refusal for one never stops the others.
+  Future<Map<String, String>> moveSelectedToTrash() async {
+    final paths = selectedEntries.map((entry) => entry.path).toList();
+    if (paths.isEmpty) return const {};
+
+    final failures = await _trash(paths);
+    // Anything that actually left stops being selected; what was refused
+    // stays ticked so the user can see what did not go.
+    selected.removeWhere((path) => !failures.containsKey(path));
+    notifyListeners();
+    return failures;
+  }
+
+  Future<Map<String, String>> _trash(List<String> paths) async {
+    final failures = await _moveToTrash(paths);
+    if (failures.length == paths.length) return failures;
+
+    // The listing on screen still shows rows that have just left; both views
+    // are rebuilt from disk rather than patched in place.
+    if (view == AnalyzeView.largeFiles) {
+      await showLargeFiles();
+    } else {
+      _reload(currentPath);
+    }
+    return failures;
+  }
 
   /// Overview first, then the row that was opened, then each directory down
   /// to the one currently showing.

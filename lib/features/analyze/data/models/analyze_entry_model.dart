@@ -6,6 +6,7 @@ class AnalyzeEntryModel extends AnalyzeEntry {
     required super.name,
     required super.isDirectory,
     super.sizeBytes,
+    super.accessed,
   });
 
   /// `du` prints one entry per line as `<blocks>\t<path>`. The path is

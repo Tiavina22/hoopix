@@ -21,11 +21,16 @@ class AnalyzeEntry {
     required this.isDirectory,
     this.sizeBytes,
     this.overviewKind,
+    this.accessed,
   });
 
   final String path;
   final String name;
   final bool isDirectory;
+
+  /// Last access time, when the native walk reported one. Backs the "unused
+  /// for N" hint, the same signal Mole shows beside an entry.
+  final DateTime? accessed;
 
   /// Null while a directory's recursive total is still being computed, or
   /// when it could not be read at all — deliberately distinct from a real
@@ -43,6 +48,7 @@ class AnalyzeEntry {
     isDirectory: isDirectory,
     sizeBytes: sizeBytes,
     overviewKind: overviewKind,
+    accessed: accessed,
   );
 
   /// This entry's share of [totalBytes], for the row's proportion bar.

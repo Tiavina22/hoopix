@@ -1,3 +1,4 @@
+import 'package:hoopix/core/platform/safe_path.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 
 /// Asks Finder to select a path. `open -R` hands off to Finder over XPC and
@@ -9,6 +10,10 @@ class RevealLocalDataSource {
   final ProcessRunner _processRunner;
 
   Future<bool> reveal(String path) async {
+    // Nothing relative, traversing, or null-byte-carrying is handed to an
+    // external command, the same check Mole runs before its own `open`.
+    if (!isSafeExternalPath(path)) return false;
+
     final result = await _processRunner.run('open', ['-R', path]);
     return result.isSuccess;
   }

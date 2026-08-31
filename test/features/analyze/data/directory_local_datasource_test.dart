@@ -1,138 +1,175 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hoopix/core/process/process_failure.dart';
-import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/core/platform/directory_scanner.dart';
+import 'package:hoopix/features/analyze/data/datasources/directory_cache.dart';
 import 'package:hoopix/features/analyze/data/datasources/directory_local_datasource.dart';
 import 'package:hoopix/features/analyze/domain/entities/analyze_entry.dart';
 import 'package:hoopix/features/analyze/domain/entities/directory_scan.dart';
 
-import '../../../support/fake_process_runner.dart';
+/// Replays a scripted walk instead of touching the disk. The walk itself is
+/// native (`macos/Runner/DirectoryScanChannel.swift`); what is under test
+/// here is how its events become the snapshots the screen renders.
+class _FakeScanner implements DirectoryScanner {
+  _FakeScanner(this.events);
 
-/// `du -s -k` prints one `<blocks>\t<path>` line; `-k` blocks are 1024 bytes.
-String _duLine(int kilobytes, String path) => '$kilobytes\t$path\n';
+  final List<ScanEvent> events;
+  final List<String> scanned = [];
+
+  @override
+  Stream<ScanEvent> scan(String path) {
+    scanned.add(path);
+    return Stream.fromIterable(events);
+  }
+}
+
+/// Caching off: these cases are about turning scan events into snapshots.
+/// The cache has its own tests.
+DirectoryCache _noCache() => DirectoryCache(cacheDirectory: null);
 
 AnalyzeEntry _entry(DirectoryScan scan, String name) =>
     scan.entries.firstWhere((entry) => entry.name == name);
 
+ScanEntry _file(String path, int size) =>
+    ScanEntry(path: path, isDirectory: false, sizeBytes: size, accessed: null);
+
+ScanEntry _directory(String path) =>
+    ScanEntry(path: path, isDirectory: true, sizeBytes: null, accessed: null);
+
 void main() {
-  late Directory root;
+  test('files arrive sized, directories fill in afterwards', () async {
+    final scanner = _FakeScanner([
+      _file('/root/small.txt', 100),
+      _directory('/root/photos'),
+      const ScanListed(1),
+      const ScanSize('/root/photos', 512000),
+      const ScanComplete(),
+    ]);
 
-  setUp(() async {
-    root = await Directory.systemTemp.createTemp('hoopix_analyze_');
-  });
+    final scans = await DirectoryLocalDataSource(scanner, _noCache()).watch('/root').toList();
 
-  tearDown(() async {
-    if (root.existsSync()) await root.delete(recursive: true);
-  });
+    expect(scanner.scanned, ['/root']);
 
-  test('sizes files from stat and directories from du', () async {
-    await File('${root.path}/small.txt').writeAsString('x' * 100);
-    await Directory('${root.path}/photos').create();
-
-    final runner = FakeProcessRunner({
-      'du -skPx ${root.path}/photos': ProcessResult.success(
-        _duLine(500, '${root.path}/photos'),
-      ),
-    });
-
-    final scans = await DirectoryLocalDataSource(runner).watch(root.path).toList();
-
-    // First emission is the listing itself: the file already carries its
-    // final size, the directory is still pending.
-    expect(scans.first.status, DirectoryScanStatus.scanning);
-    expect(_entry(scans.first, 'small.txt').sizeBytes, 100);
-    expect(_entry(scans.first, 'photos').sizeBytes, isNull);
+    // First frame: the file is final, the directory is still measuring.
+    final listed = scans.first;
+    expect(listed.status, DirectoryScanStatus.scanning);
+    expect(_entry(listed, 'small.txt').sizeBytes, 100);
+    expect(_entry(listed, 'photos').sizeBytes, isNull);
 
     final last = scans.last;
     expect(last.status, DirectoryScanStatus.loaded);
-    expect(_entry(last, 'photos').sizeBytes, 500 * 1024);
-    expect(last.totalBytes, 500 * 1024 + 100);
-    // Sorted by size descending: the 500 KB directory outranks the file.
+    expect(_entry(last, 'photos').sizeBytes, 512000);
+    expect(last.totalBytes, 512100);
+    // Sorted by size descending.
     expect(last.entries.map((entry) => entry.name), ['photos', 'small.txt']);
   });
 
-  test('keeps a du total that came with a non-zero exit', () async {
-    // The `~/Library` case: `du` exits 1 because some descendant is
-    // unreadable, but the total it printed is still the right number.
-    await Directory('${root.path}/library').create();
-
-    final runner = FakeProcessRunner({
-      'du -skPx ${root.path}/library': ProcessResult.failure(
-        ProcessFailure.nonZeroExit('du', 1, 'du: ...: Operation not permitted'),
-        stdout: _duLine(31720772, '${root.path}/library'),
-      ),
-    });
-
-    final scans = await DirectoryLocalDataSource(runner).watch(root.path).toList();
-
-    expect(scans.last.status, DirectoryScanStatus.loaded);
-    expect(_entry(scans.last, 'library').sizeBytes, 31720772 * 1024);
-  });
-
-  test('a timed-out probe leaves one size unknown without failing the rest', () async {
-    await Directory('${root.path}/fast').create();
-    await Directory('${root.path}/slow').create();
-
-    final runner = FakeProcessRunner({
-      'du -skPx ${root.path}/fast': ProcessResult.success(
-        _duLine(64, '${root.path}/fast'),
-      ),
-      'du -skPx ${root.path}/slow': ProcessResult.failure(
-        ProcessFailure.timedOut('du', const Duration(seconds: 60)),
-      ),
-    });
-
-    final scans = await DirectoryLocalDataSource(runner).watch(root.path).toList();
-
-    final last = scans.last;
-    expect(last.status, DirectoryScanStatus.loaded);
-    expect(_entry(last, 'fast').sizeBytes, 64 * 1024);
-    expect(_entry(last, 'slow').sizeBytes, isNull);
-    // Unknown sizes sort last so rows settle downward rather than reshuffle.
-    expect(last.entries.map((entry) => entry.name), ['fast', 'slow']);
-  });
-
-  test('an empty directory loads with no entries', () async {
+  test('a directory with no children loads immediately', () async {
     final scans = await DirectoryLocalDataSource(
-      FakeProcessRunner(const {}),
-    ).watch(root.path).toList();
+      _FakeScanner([const ScanListed(0), const ScanComplete()]),
+      _noCache(),
+    ).watch('/empty').toList();
 
-    expect(scans, hasLength(1));
-    expect(scans.single.status, DirectoryScanStatus.loaded);
-    expect(scans.single.entries, isEmpty);
-    expect(scans.single.isEmpty, isTrue);
+    expect(scans.first.status, DirectoryScanStatus.loaded);
+    expect(scans.first.entries, isEmpty);
+    expect(scans.first.isEmpty, isTrue);
   });
 
-  test('symlinks are neither listed nor sized', () async {
-    await File('${root.path}/real.txt').writeAsString('x' * 10);
-    await Link('${root.path}/alias.txt').create('${root.path}/real.txt');
-
+  test('an unreadable directory reports permission denied', () async {
     final scans = await DirectoryLocalDataSource(
-      FakeProcessRunner(const {}),
-    ).watch(root.path).toList();
-
-    expect(scans.last.entries.map((entry) => entry.name), ['real.txt']);
-  });
-
-  test('reports permission denied when the directory itself is unreadable', () async {
-    final locked = await Directory('${root.path}/locked').create();
-    await Process.run('chmod', ['000', locked.path]);
-    addTearDown(() => Process.run('chmod', ['755', locked.path]));
-
-    final scans = await DirectoryLocalDataSource(
-      FakeProcessRunner(const {}),
-    ).watch(locked.path).toList();
+      // EACCES.
+      _FakeScanner([const ScanFailed('Permission denied', 13)]),
+      _noCache(),
+    ).watch('/locked').toList();
 
     expect(scans.single.status, DirectoryScanStatus.permissionDenied);
     expect(scans.single.entries, isEmpty);
   });
 
-  test('reports a failure for a path that does not exist', () async {
+  test('any other failure is reported as a failure, not a refusal', () async {
     final scans = await DirectoryLocalDataSource(
-      FakeProcessRunner(const {}),
-    ).watch('${root.path}/missing').toList();
+      // ENOENT.
+      _FakeScanner([const ScanFailed('No such file or directory', 2)]),
+      _noCache(),
+    ).watch('/missing').toList();
 
     expect(scans.single.status, DirectoryScanStatus.failed);
+  });
+
+  test('sizes still pending sort last so rows settle downward', () async {
+    final scans = await DirectoryLocalDataSource(
+      _FakeScanner([
+        _directory('/root/slow'),
+        _directory('/root/fast'),
+        const ScanListed(2),
+        const ScanSize('/root/fast', 64000),
+        const ScanComplete(),
+      ]),
+      _noCache(),
+    ).watch('/root').toList();
+
+    // `slow` never reported a size; it stays visible, below the sized one.
+    final last = scans.last;
+    expect(last.entries.map((entry) => entry.name), ['fast', 'slow']);
+    expect(_entry(last, 'slow').sizeBytes, isNull);
+  });
+
+
+  test('caps the shown list at 30 while the total stays true', () async {
+    final entries = [
+      for (var i = 0; i < 40; i++) _file('/root/f$i', 40 - i),
+    ];
+    final scanner = _FakeScanner([
+      ...entries,
+      const ScanListed(0),
+      const ScanComplete(),
+    ]);
+
+    final scans = await DirectoryLocalDataSource(scanner, _noCache())
+        .watch('/root')
+        .toList();
+
+    final last = scans.last;
+    expect(last.entries, hasLength(30));
+    // The biggest 30 are kept, in order.
+    expect(last.entries.first.name, 'f0');
+    expect(last.entries.last.name, 'f29');
+    // The total is every file's size, not just the 30 shown.
+    final expectedTotal = List.generate(40, (i) => 40 - i).reduce((a, b) => a + b);
+    expect(last.totalBytes, expectedTotal);
+  });
+
+  test('capEntries: false returns every entry, uncapped', () async {
+    final entries = [
+      for (var i = 0; i < 40; i++) _file('/root/f$i', 40 - i),
+    ];
+    final scanner = _FakeScanner([
+      ...entries,
+      const ScanListed(0),
+      const ScanComplete(),
+    ]);
+
+    final scans = await DirectoryLocalDataSource(scanner, _noCache())
+        .watch('/root', capEntries: false)
+        .toList();
+
+    expect(scans.last.entries, hasLength(40));
+  });
+
+  test('carries the last-access time through to the row', () async {
+    final accessed = DateTime(2026, 3, 14);
+    final scans = await DirectoryLocalDataSource(
+      _FakeScanner([
+        ScanEntry(
+          path: '/root/old.dmg',
+          isDirectory: false,
+          sizeBytes: 10,
+          accessed: accessed,
+        ),
+        const ScanListed(0),
+        const ScanComplete(),
+      ]),
+      _noCache(),
+    ).watch('/root').toList();
+
+    expect(_entry(scans.last, 'old.dmg').accessed, accessed);
   });
 }
