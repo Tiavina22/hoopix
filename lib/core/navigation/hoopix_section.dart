@@ -22,7 +22,9 @@ enum HoopixSection {
   final IconData icon;
 
   bool get isImplemented =>
-      this == HoopixSection.status || this == HoopixSection.settings;
+      this == HoopixSection.analyze ||
+      this == HoopixSection.status ||
+      this == HoopixSection.settings;
 }
 
 /// Label/description are locale-dependent, so they can't live on the enum

@@ -29,6 +29,41 @@
   "darkModeLabel": "Dark Mode",
   "languageCardTitle": "Language",
 
+  "analyzeOverviewBreadcrumb": "Overview",
+  "analyzeRowHome": "Home",
+  "analyzeRowUserLibrary": "User Library",
+  "analyzeRowApplications": "Applications",
+  "analyzeRowSystemLibrary": "System Library",
+  "analyzeRowIosBackups": "iOS Backups",
+  "analyzeRowOldDownloads": "Old Downloads (90d+)",
+  "analyzeViewFolders": "Folders",
+  "analyzeViewLargestFiles": "Largest files",
+  "analyzeNoLargeFiles": "No files over 100 MB here.",
+  "analyzeScanning": "Scanning…",
+  "analyzeEmptyDirectory": "This folder is empty.",
+  "analyzePermissionDenied": "hoopix can't read this folder.",
+  "analyzeEntryUnknownSize": "—",
+  "analyzeRetry": "Try again",
+  "analyzeFailed": "Couldn't read this folder: {error}",
+  "@analyzeFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "analyzeItemCount": "{count, plural, one{{count} item} other{{count} items}}",
+  "@analyzeItemCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "analyzeRevealInFinder": "Reveal in Finder",
+  "analyzeRevealFailed": "Couldn't reveal {name} in Finder.",
+  "@analyzeRevealFailed": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+
   "statusUnavailable": "Status unavailable: {error}",
   "@statusUnavailable": {
     "placeholders": {
