@@ -5,6 +5,8 @@ class MainFlutterWindow: NSWindow {
   /// Held for the window's lifetime; the channel stops answering as soon as
   /// it is released.
   private var diskUsageChannel: DiskUsageChannel?
+  private var trashChannel: TrashChannel?
+  private var scanChannel: DirectoryScanChannel?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -30,6 +32,10 @@ class MainFlutterWindow: NSWindow {
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     diskUsageChannel = DiskUsageChannel(
+      messenger: flutterViewController.engine.binaryMessenger)
+    trashChannel = TrashChannel(
+      messenger: flutterViewController.engine.binaryMessenger)
+    scanChannel = DirectoryScanChannel(
       messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
