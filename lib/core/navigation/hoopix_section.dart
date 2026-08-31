@@ -23,6 +23,7 @@ enum HoopixSection {
 
   bool get isImplemented =>
       this == HoopixSection.analyze ||
+      this == HoopixSection.clean ||
       this == HoopixSection.status ||
       this == HoopixSection.settings;
 }

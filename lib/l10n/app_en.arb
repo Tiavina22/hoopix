@@ -35,6 +35,57 @@
       "count": { "type": "int" }
     }
   },
+  "cleanMoveToTrash": "Move to Trash",
+  "cleanWorking": "Working\u2026",
+  "cleanConfirmTitle": "{count, plural, one{Move 1 item to the Trash?} other{Move {count} items to the Trash?}}",
+  "@cleanConfirmTitle": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "cleanConfirmBody": "Frees {size}. You can put anything back from the Trash.",
+  "@cleanConfirmBody": {
+    "placeholders": {
+      "size": { "type": "String" }
+    }
+  },
+  "cleanTrashed": "{count, plural, one{Moved 1 item to the Trash.} other{Moved {count} items to the Trash.}}",
+  "@cleanTrashed": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "cleanTrashRefused": "{count, plural, one{1 item could not be moved.} other{{count} items could not be moved.}}",
+  "@cleanTrashRefused": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "cleanPreviewOnly": "This is a preview. Nothing is removed until you say so.",
+  "cleanNothingToDo": "Nothing to clean up right now.",
+  "cleanFailed": "Couldn\u2019t work out what to clean: {error}",
+  "@cleanFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "cleanItemCount": "{count, plural, one{{count} item} other{{count} items}}",
+  "@cleanItemCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "cleanAndMore": "{count, plural, one{and 1 more} other{and {count} more}}",
+  "@cleanAndMore": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "cleanKeptTitle": "Left alone",
+  "cleanKeptProtected": "Protected",
+  "cleanKeptWhitelisted": "On your whitelist",
+  "cleanKeptModelCache": "In use by a running app",
+
   "analyzeOverviewBreadcrumb": "Overview",
   "analyzeRowHome": "Home",
   "analyzeRowUserLibrary": "User Library",

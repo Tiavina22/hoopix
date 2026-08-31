@@ -8,13 +8,13 @@ import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/theme/theme_controller.dart';
 import 'package:hoopix/core/widgets/placeholder_screen.dart';
 import 'package:hoopix/features/analyze/presentation/screens/analyze_screen.dart';
+import 'package:hoopix/features/clean/presentation/screens/clean_screen.dart';
 import 'package:hoopix/features/settings/presentation/screens/settings_screen.dart';
 import 'package:hoopix/features/status/presentation/screens/status_screen.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
-/// Sidebar + content shell. Only [HoopixSection.status] and
-/// [HoopixSection.settings] render a real screen; everything else renders
-/// [PlaceholderScreen] until its own feature module exists.
+/// Sidebar + content shell. Sections with a feature module behind them
+/// render it; the rest render [PlaceholderScreen] until they have one.
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
@@ -58,6 +58,7 @@ class _AppShellState extends State<AppShell> {
   Widget _content(HoopixSection section) {
     return switch (section) {
       HoopixSection.analyze => const AnalyzeScreen(),
+      HoopixSection.clean => const CleanScreen(),
       HoopixSection.status => const StatusScreen(),
       HoopixSection.settings => SettingsScreen(
         themeController: widget.themeController,
