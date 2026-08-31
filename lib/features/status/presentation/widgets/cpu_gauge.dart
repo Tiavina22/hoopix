@@ -6,6 +6,7 @@ import 'package:hoopix/core/widgets/metric_card.dart';
 import 'package:hoopix/core/widgets/ring_gauge.dart';
 import 'package:hoopix/core/widgets/tabular_text.dart';
 import 'package:hoopix/features/status/domain/entities/cpu_status.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 class CpuGauge extends StatelessWidget {
   const CpuGauge({super.key, required this.cpu});
@@ -15,10 +16,11 @@ class CpuGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
     final cpu = this.cpu;
 
     return MetricCard(
-      title: 'CPU',
+      title: l10n.cpuCardTitle,
       child: cpu == null
           ? const UnavailableNote()
           : Row(
@@ -34,22 +36,22 @@ class CpuGauge extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _Breakdown(
-                        label: 'User',
+                        label: l10n.cpuUserLabel,
                         value: '${cpu.userPercent.toStringAsFixed(1)}%',
                       ),
                       const SizedBox(height: HoopixSpacing.sm),
                       _Breakdown(
-                        label: 'System',
+                        label: l10n.cpuSystemLabel,
                         value: '${cpu.systemPercent.toStringAsFixed(1)}%',
                       ),
                       const SizedBox(height: HoopixSpacing.sm),
                       _Breakdown(
-                        label: 'Idle',
+                        label: l10n.cpuIdleLabel,
                         value: '${cpu.idlePercent.toStringAsFixed(1)}%',
                       ),
                       const SizedBox(height: HoopixSpacing.md),
                       Text(
-                        '${cpu.physicalCores} cores',
+                        l10n.cpuCores(cpu.physicalCores),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: HoopixType.caption.copyWith(

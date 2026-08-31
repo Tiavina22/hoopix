@@ -13,6 +13,7 @@ import 'package:hoopix/features/status/presentation/widgets/disk_list.dart';
 import 'package:hoopix/features/status/presentation/widgets/host_summary.dart';
 import 'package:hoopix/features/status/presentation/widgets/memory_gauge.dart';
 import 'package:hoopix/features/status/presentation/widgets/network_card.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 /// Live, read-only system-health dashboard. [repository] is injectable so
 /// tests can substitute a fake instead of the real local one.
@@ -68,7 +69,7 @@ class _FirstLoad extends StatelessWidget {
     if (error != null) {
       return Center(
         child: Text(
-          'Status unavailable: $error',
+          AppLocalizations.of(context)!.statusUnavailable('$error'),
           style: HoopixType.body.copyWith(color: palette.labelSecondary),
         ),
       );
@@ -156,7 +157,7 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Status',
+          AppLocalizations.of(context)!.sectionStatusLabel,
           style: HoopixType.largeTitle.copyWith(color: palette.labelPrimary),
         ),
         const SizedBox(height: HoopixSpacing.xs),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hoopix/core/brand/hoopix_logo.dart';
+import 'package:hoopix/core/locale/locale_controller.dart';
 import 'package:hoopix/core/navigation/hoopix_section.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
@@ -8,14 +9,20 @@ import 'package:hoopix/core/theme/theme_controller.dart';
 import 'package:hoopix/core/widgets/placeholder_screen.dart';
 import 'package:hoopix/features/settings/presentation/screens/settings_screen.dart';
 import 'package:hoopix/features/status/presentation/screens/status_screen.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 /// Sidebar + content shell. Only [HoopixSection.status] and
 /// [HoopixSection.settings] render a real screen; everything else renders
 /// [PlaceholderScreen] until its own feature module exists.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, required this.themeController});
+  const AppShell({
+    super.key,
+    required this.themeController,
+    required this.localeController,
+  });
 
   final ThemeController themeController;
+  final LocaleController localeController;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -52,6 +59,7 @@ class _AppShellState extends State<AppShell> {
       HoopixSection.status => const StatusScreen(),
       HoopixSection.settings => SettingsScreen(
         themeController: widget.themeController,
+        localeController: widget.localeController,
       ),
       _ => PlaceholderScreen(section: section),
     };
@@ -187,7 +195,7 @@ class _SidebarItemState extends State<_SidebarItem> {
                 const SizedBox(width: HoopixSpacing.md),
                 Expanded(
                   child: Text(
-                    widget.section.label,
+                    widget.section.label(AppLocalizations.of(context)!),
                     style: HoopixType.body.copyWith(
                       color: isSelected ? palette.labelPrimary : foreground,
                       fontWeight: isSelected
@@ -211,6 +219,7 @@ class _SidebarFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -220,7 +229,7 @@ class _SidebarFooter extends StatelessWidget {
         HoopixSpacing.lg,
       ),
       child: Text(
-        'Open source · v0.1.0',
+        l10n.openSourceFooter('0.1.0'),
         style: HoopixType.caption.copyWith(color: palette.labelTertiary),
       ),
     );

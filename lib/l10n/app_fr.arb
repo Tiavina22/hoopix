@@ -1,0 +1,58 @@
+{
+  "@@locale": "fr",
+
+  "sectionCleanLabel": "Nettoyer",
+  "sectionCleanDescription": "Libérer de l'espace disque",
+  "sectionUninstallLabel": "Désinstaller",
+  "sectionUninstallDescription": "Supprimer complètement des applications",
+  "sectionOptimizeLabel": "Optimiser",
+  "sectionOptimizeDescription": "Actualiser les caches et services",
+  "sectionAnalyzeLabel": "Analyser",
+  "sectionAnalyzeDescription": "Explorer l'utilisation du disque",
+  "sectionStatusLabel": "État",
+  "sectionStatusDescription": "Surveiller l'état du système",
+  "sectionPurgeLabel": "Purger",
+  "sectionPurgeDescription": "Nettoyer les artefacts de build des projets",
+  "sectionSettingsLabel": "Réglages",
+  "sectionSettingsDescription": "Préférences de l'application",
+
+  "openSourceFooter": "Open source · v{version}",
+
+  "comingSoon": "Bientôt disponible",
+
+  "appearanceCardTitle": "Apparence",
+  "darkModeLabel": "Mode sombre",
+  "languageCardTitle": "Langue",
+
+  "statusUnavailable": "État indisponible : {error}",
+
+  "cpuCardTitle": "CPU",
+  "cpuUserLabel": "Utilisateur",
+  "cpuSystemLabel": "Système",
+  "cpuIdleLabel": "Inactif",
+  "cpuCores": "{count, plural, one{{count} cœur} other{{count} cœurs}}",
+
+  "memoryCardTitle": "Mémoire",
+  "memoryOfTotalUsed": "sur {total} utilisés",
+  "memoryFree": "{free} libres",
+
+  "networkCardTitle": "Réseau",
+  "networkSinceBoot": "Depuis le démarrage",
+
+  "storageCardTitle": "Stockage",
+  "startupDisk": "Disque de démarrage",
+  "diskFreeOfTotal": "{free} libres sur {total}",
+
+  "hostInfoUnavailable": "Informations sur l'hôte indisponibles",
+  "hostMacOsVersion": "macOS {version}",
+  "hostUpUptime": "actif depuis {uptime}",
+
+  "batteryCardTitle": "Batterie",
+  "noBattery": "Pas de batterie",
+  "batteryCharging": "En charge",
+  "batteryPluggedIn": "Branché",
+  "batteryOnBattery": "Sur batterie",
+  "batteryStateWithRemaining": "{state} · {remaining} restant",
+
+  "unavailable": "Indisponible"
+}

@@ -1,0 +1,105 @@
+{
+  "@@locale": "en",
+
+  "sectionCleanLabel": "Clean",
+  "sectionCleanDescription": "Free up disk space",
+  "sectionUninstallLabel": "Uninstall",
+  "sectionUninstallDescription": "Remove apps completely",
+  "sectionOptimizeLabel": "Optimize",
+  "sectionOptimizeDescription": "Refresh caches and services",
+  "sectionAnalyzeLabel": "Analyze",
+  "sectionAnalyzeDescription": "Explore disk usage",
+  "sectionStatusLabel": "Status",
+  "sectionStatusDescription": "Monitor system health",
+  "sectionPurgeLabel": "Purge",
+  "sectionPurgeDescription": "Clean project build artifacts",
+  "sectionSettingsLabel": "Settings",
+  "sectionSettingsDescription": "App preferences",
+
+  "openSourceFooter": "Open source · v{version}",
+  "@openSourceFooter": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+
+  "comingSoon": "Coming soon",
+
+  "appearanceCardTitle": "Appearance",
+  "darkModeLabel": "Dark Mode",
+  "languageCardTitle": "Language",
+
+  "statusUnavailable": "Status unavailable: {error}",
+  "@statusUnavailable": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "cpuCardTitle": "CPU",
+  "cpuUserLabel": "User",
+  "cpuSystemLabel": "System",
+  "cpuIdleLabel": "Idle",
+  "cpuCores": "{count, plural, one{{count} core} other{{count} cores}}",
+  "@cpuCores": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "memoryCardTitle": "Memory",
+  "memoryOfTotalUsed": "of {total} used",
+  "@memoryOfTotalUsed": {
+    "placeholders": {
+      "total": { "type": "String" }
+    }
+  },
+  "memoryFree": "{free} free",
+  "@memoryFree": {
+    "placeholders": {
+      "free": { "type": "String" }
+    }
+  },
+
+  "networkCardTitle": "Network",
+  "networkSinceBoot": "Since boot",
+
+  "storageCardTitle": "Storage",
+  "startupDisk": "Startup disk",
+  "diskFreeOfTotal": "{free} free of {total}",
+  "@diskFreeOfTotal": {
+    "placeholders": {
+      "free": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+
+  "hostInfoUnavailable": "Host information unavailable",
+  "hostMacOsVersion": "macOS {version}",
+  "@hostMacOsVersion": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+  "hostUpUptime": "up {uptime}",
+  "@hostUpUptime": {
+    "placeholders": {
+      "uptime": { "type": "String" }
+    }
+  },
+
+  "batteryCardTitle": "Battery",
+  "noBattery": "No battery",
+  "batteryCharging": "Charging",
+  "batteryPluggedIn": "Plugged in",
+  "batteryOnBattery": "On battery",
+  "batteryStateWithRemaining": "{state} · {remaining} remaining",
+  "@batteryStateWithRemaining": {
+    "placeholders": {
+      "state": { "type": "String" },
+      "remaining": { "type": "String" }
+    }
+  },
+
+  "unavailable": "Unavailable"
+}

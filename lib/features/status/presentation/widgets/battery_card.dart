@@ -7,6 +7,7 @@ import 'package:hoopix/core/widgets/metric_card.dart';
 import 'package:hoopix/core/widgets/ring_gauge.dart';
 import 'package:hoopix/core/widgets/tabular_text.dart';
 import 'package:hoopix/features/status/domain/entities/battery_status.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 class BatteryCard extends StatelessWidget {
   const BatteryCard({super.key, required this.battery});
@@ -16,10 +17,11 @@ class BatteryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
     final battery = this.battery;
 
     return MetricCard(
-      title: 'Battery',
+      title: l10n.batteryCardTitle,
       trailing: battery != null && battery.isPluggedIn
           ? Icon(
               battery.isCharging ? Icons.bolt : Icons.power_outlined,
@@ -28,7 +30,7 @@ class BatteryCard extends StatelessWidget {
             )
           : null,
       child: battery == null
-          ? const UnavailableNote(label: 'No battery')
+          ? UnavailableNote(label: l10n.noBattery)
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -62,7 +64,7 @@ class BatteryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: HoopixSpacing.md),
                 Text(
-                  _subtitle(battery),
+                  _subtitle(battery, l10n),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: HoopixType.caption.copyWith(
@@ -74,17 +76,17 @@ class BatteryCard extends StatelessWidget {
     );
   }
 
-  String _subtitle(BatteryStatus battery) {
+  String _subtitle(BatteryStatus battery, AppLocalizations l10n) {
     final state = switch (battery) {
-      _ when battery.isCharging => 'Charging',
+      _ when battery.isCharging => l10n.batteryCharging,
       // Plugged in but holding — macOS does this near a full charge, and
       // calling it "On battery" would be wrong.
-      _ when battery.isPluggedIn => 'Plugged in',
-      _ => 'On battery',
+      _ when battery.isPluggedIn => l10n.batteryPluggedIn,
+      _ => l10n.batteryOnBattery,
     };
 
     final remaining = battery.timeRemaining;
     if (remaining == null || remaining == Duration.zero) return state;
-    return '$state · ${formatDuration(remaining)} remaining';
+    return l10n.batteryStateWithRemaining(state, formatDuration(remaining));
   }
 }

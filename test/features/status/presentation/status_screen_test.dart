@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/features/status/domain/entities/cpu_status.dart';
 import 'package:hoopix/features/status/domain/entities/system_snapshot.dart';
 import 'package:hoopix/features/status/domain/repositories/status_repository.dart';
 import 'package:hoopix/features/status/presentation/screens/status_screen.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 class _FakeStatusRepository implements StatusRepository {
   @override
@@ -29,6 +31,15 @@ class _FakeStatusRepository implements StatusRepository {
 Widget _harness({ThemeData? theme}) {
   return MaterialApp(
     theme: theme,
+    // Pinned so text assertions below don't depend on the host/CI locale.
+    locale: const Locale('en'),
+    localizationsDelegates: const [
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    supportedLocales: AppLocalizations.supportedLocales,
     home: StatusScreen(repository: _FakeStatusRepository()),
   );
 }

@@ -6,6 +6,7 @@ import 'package:hoopix/core/utils/byte_format.dart';
 import 'package:hoopix/core/widgets/metric_card.dart';
 import 'package:hoopix/core/widgets/tabular_text.dart';
 import 'package:hoopix/features/status/domain/entities/network_status.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 class NetworkCard extends StatelessWidget {
   const NetworkCard({super.key, required this.network});
@@ -15,10 +16,11 @@ class NetworkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
     final network = this.network;
 
     return MetricCard(
-      title: 'Network',
+      title: l10n.networkCardTitle,
       child: network == null
           ? const UnavailableNote()
           : Column(
@@ -38,7 +40,7 @@ class NetworkCard extends StatelessWidget {
                 ),
                 const SizedBox(height: HoopixSpacing.md),
                 Text(
-                  'Since boot',
+                  l10n.networkSinceBoot,
                   style: HoopixType.caption.copyWith(
                     color: palette.labelTertiary,
                   ),

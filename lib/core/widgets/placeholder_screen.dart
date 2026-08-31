@@ -3,6 +3,7 @@ import 'package:hoopix/core/navigation/hoopix_section.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 /// Shown for every [HoopixSection] that doesn't have a real feature module
 /// yet. Intentionally inert — no scanning, no filesystem access.
@@ -14,6 +15,7 @@ class PlaceholderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
 
     return Center(
       child: Column(
@@ -30,12 +32,12 @@ class PlaceholderScreen extends StatelessWidget {
           ),
           const SizedBox(height: HoopixSpacing.xl),
           Text(
-            section.label,
+            section.label(l10n),
             style: HoopixType.title.copyWith(color: palette.labelPrimary),
           ),
           const SizedBox(height: HoopixSpacing.xs),
           Text(
-            section.description,
+            section.description(l10n),
             style: HoopixType.body.copyWith(color: palette.labelSecondary),
           ),
           const SizedBox(height: HoopixSpacing.lg),
@@ -50,7 +52,7 @@ class PlaceholderScreen extends StatelessWidget {
               border: Border.all(color: palette.separator),
             ),
             child: Text(
-              'Coming soon',
+              l10n.comingSoon,
               style: HoopixType.caption.copyWith(color: palette.labelSecondary),
             ),
           ),

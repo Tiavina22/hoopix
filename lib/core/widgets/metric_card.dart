@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 /// The app's single surface primitive: a hairline-bordered panel with one
 /// small uppercase title. Depth comes from the border and a barely-there
@@ -68,9 +69,12 @@ class MetricCard extends StatelessWidget {
 /// styled as a quiet absence rather than an error, because one flaky probe
 /// isn't a failure of the dashboard.
 class UnavailableNote extends StatelessWidget {
-  const UnavailableNote({super.key, this.label = 'Unavailable'});
+  const UnavailableNote({super.key, this.label});
 
-  final String label;
+  /// Defaults to the localized "Unavailable" when omitted — null rather
+  /// than a fixed default because a `const` default can't see the current
+  /// [AppLocalizations].
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +84,7 @@ class UnavailableNote extends StatelessWidget {
         Icon(Icons.remove, size: 14, color: palette.labelTertiary),
         const SizedBox(width: HoopixSpacing.sm),
         Text(
-          label,
+          label ?? AppLocalizations.of(context)!.unavailable,
           style: HoopixType.body.copyWith(color: palette.labelTertiary),
         ),
       ],

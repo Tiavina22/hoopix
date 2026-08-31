@@ -1,21 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:hoopix/core/locale/locale_controller.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/theme/theme_controller.dart';
 import 'package:hoopix/core/widgets/metric_card.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
-/// App preferences. Currently holds the one control the app needs: the
-/// light/dark switch, applied to [HoopixApp] in real time via
-/// [themeController].
+/// App preferences: the light/dark switch and the language switch, applied
+/// to [HoopixApp] in real time via [themeController] and [localeController].
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.themeController});
+  const SettingsScreen({
+    super.key,
+    required this.themeController,
+    required this.localeController,
+  });
 
   final ThemeController themeController;
+  final LocaleController localeController;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -28,13 +35,21 @@ class SettingsScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Settings',
+            l10n.sectionSettingsLabel,
             style: HoopixType.largeTitle.copyWith(
               color: palette.labelPrimary,
             ),
           ),
           const SizedBox(height: HoopixSpacing.xxl),
-          MetricCard(title: 'Appearance', child: _ThemeRow(themeController)),
+          MetricCard(
+            title: l10n.appearanceCardTitle,
+            child: _ThemeRow(themeController),
+          ),
+          const SizedBox(height: HoopixSpacing.lg),
+          MetricCard(
+            title: l10n.languageCardTitle,
+            child: _LanguageRow(localeController),
+          ),
         ],
       ),
     );
@@ -49,6 +64,7 @@ class _ThemeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
 
     return AnimatedBuilder(
       animation: themeController,
@@ -58,7 +74,7 @@ class _ThemeRow extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Dark Mode',
+                l10n.darkModeLabel,
                 style: HoopixType.body.copyWith(color: palette.labelPrimary),
               ),
             ),
@@ -79,6 +95,46 @@ class _ThemeRow extends StatelessWidget {
               onChanged: themeController.setDark,
             ),
           ],
+        );
+      },
+    );
+  }
+}
+
+/// Language names are shown in each language's own name ("English",
+/// "Français") rather than translated — the standard convention for a
+/// language picker, so a user who landed on the wrong language can still
+/// find their way back.
+class _LanguageRow extends StatelessWidget {
+  const _LanguageRow(this.localeController);
+
+  final LocaleController localeController;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    return AnimatedBuilder(
+      animation: localeController,
+      builder: (context, _) {
+        final selected = localeController.value.languageCode;
+        return SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'en', label: Text('English')),
+            ButtonSegment(value: 'fr', label: Text('Français')),
+          ],
+          selected: {selected},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) =>
+              localeController.setLocale(Locale(selection.first)),
+          style: SegmentedButton.styleFrom(
+            backgroundColor: palette.surfaceSubtle,
+            foregroundColor: palette.labelSecondary,
+            selectedBackgroundColor: palette.brandSubtle,
+            selectedForegroundColor: palette.brand,
+            side: BorderSide(color: palette.separator),
+            textStyle: HoopixType.body,
+          ),
         );
       },
     );

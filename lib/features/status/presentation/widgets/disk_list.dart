@@ -7,6 +7,7 @@ import 'package:hoopix/core/widgets/metric_card.dart';
 import 'package:hoopix/core/widgets/ring_gauge.dart';
 import 'package:hoopix/core/widgets/tabular_text.dart';
 import 'package:hoopix/features/status/domain/entities/disk_status.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 class DiskList extends StatelessWidget {
   const DiskList({super.key, required this.disks});
@@ -16,7 +17,7 @@ class DiskList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MetricCard(
-      title: 'Storage',
+      title: AppLocalizations.of(context)!.storageCardTitle,
       child: disks.isEmpty
           ? const UnavailableNote()
           : Column(
@@ -40,6 +41,7 @@ class _DiskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
     final fraction = disk.usedPercent / 100;
     // Storage is the one metric where "nearly full" is actionable, so it
     // uses the threshold palette rather than the brand color.
@@ -52,7 +54,7 @@ class _DiskRow extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                _displayName(disk.mountPoint),
+                _displayName(disk.mountPoint, l10n),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: HoopixType.headline.copyWith(
@@ -71,7 +73,10 @@ class _DiskRow extends StatelessWidget {
         LinearMeter(value: fraction, color: color),
         const SizedBox(height: HoopixSpacing.sm),
         Text(
-          '${formatBytes(disk.availableBytes)} free of ${formatBytes(disk.totalBytes)}',
+          l10n.diskFreeOfTotal(
+            formatBytes(disk.availableBytes),
+            formatBytes(disk.totalBytes),
+          ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: HoopixType.caption.copyWith(color: palette.labelTertiary),
@@ -82,8 +87,8 @@ class _DiskRow extends StatelessWidget {
 
   /// Friendly volume label. The boot volume is called "Startup disk" rather
   /// than guessing at its name, which the user may well have changed.
-  String _displayName(String mountPoint) {
-    if (mountPoint == '/') return 'Startup disk';
+  String _displayName(String mountPoint, AppLocalizations l10n) {
+    if (mountPoint == '/') return l10n.startupDisk;
     if (mountPoint.startsWith('/Volumes/')) {
       return mountPoint.substring('/Volumes/'.length);
     }

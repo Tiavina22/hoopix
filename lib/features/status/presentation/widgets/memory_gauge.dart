@@ -6,6 +6,7 @@ import 'package:hoopix/core/utils/byte_format.dart';
 import 'package:hoopix/core/widgets/metric_card.dart';
 import 'package:hoopix/core/widgets/ring_gauge.dart';
 import 'package:hoopix/features/status/domain/entities/memory_status.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 class MemoryGauge extends StatelessWidget {
   const MemoryGauge({super.key, required this.memory});
@@ -15,10 +16,11 @@ class MemoryGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
     final memory = this.memory;
 
     return MetricCard(
-      title: 'Memory',
+      title: l10n.memoryCardTitle,
       child: memory == null
           ? const UnavailableNote()
           : Row(
@@ -44,7 +46,7 @@ class MemoryGauge extends StatelessWidget {
                       ),
                       const SizedBox(height: HoopixSpacing.xs),
                       Text(
-                        'of ${formatBytes(memory.totalBytes)} used',
+                        l10n.memoryOfTotalUsed(formatBytes(memory.totalBytes)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: HoopixType.callout.copyWith(
@@ -53,7 +55,7 @@ class MemoryGauge extends StatelessWidget {
                       ),
                       const SizedBox(height: HoopixSpacing.md),
                       Text(
-                        '${formatBytes(memory.freeBytes)} free',
+                        l10n.memoryFree(formatBytes(memory.freeBytes)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: HoopixType.caption.copyWith(

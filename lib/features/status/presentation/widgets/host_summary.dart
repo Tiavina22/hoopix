@@ -3,6 +3,7 @@ import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/utils/byte_format.dart';
 import 'package:hoopix/features/status/domain/entities/host_status.dart';
+import 'package:hoopix/l10n/app_localizations.dart';
 
 /// Machine identity line under the screen title: name, OS, uptime.
 class HostSummary extends StatelessWidget {
@@ -13,14 +14,15 @@ class HostSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
     final host = this.host;
 
     final text = host == null
-        ? 'Host information unavailable'
+        ? l10n.hostInfoUnavailable
         : [
             host.hostname.replaceFirst(RegExp(r'\.local$'), ''),
-            'macOS ${host.osVersion}',
-            'up ${formatDuration(host.uptime)}',
+            l10n.hostMacOsVersion(host.osVersion),
+            l10n.hostUpUptime(formatDuration(host.uptime)),
           ].join('  ·  ');
 
     return Text(
