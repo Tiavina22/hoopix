@@ -4,7 +4,7 @@ import 'package:hoopix/core/platform/disk_usage.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/analyze/data/datasources/directory_local_datasource.dart';
 import 'package:hoopix/features/analyze/data/datasources/overview_cache.dart';
-import 'package:hoopix/features/analyze/data/datasources/size_probe.dart';
+import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/features/analyze/domain/entities/analyze_entry.dart';
 import 'package:hoopix/features/analyze/domain/entities/directory_scan.dart';
 

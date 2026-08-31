@@ -2,12 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:hoopix/core/process/process_runner.dart';
-import 'package:hoopix/features/analyze/data/models/analyze_entry_model.dart';
+import 'package:hoopix/core/platform/du_output.dart';
 
 /// Measures directory sizes with `du`, a bounded number at a time.
 ///
-/// Shared by the overview and the directory explorer so both size things the
-/// same way. Flags match Mole's own analyzer (`du -skPx`): summarize, 1024-byte
+/// Shared by Analyze's overview and Clean so both size things the same way. Flags match Mole's own analyzer (`du -skPx`): summarize, 1024-byte
 /// blocks, never follow symlinks, never cross mount points.
 class SizeProbe {
   const SizeProbe(this._processRunner);
@@ -28,7 +27,7 @@ class SizeProbe {
     // (which is also the timeout case).
     final stdout = result.stdout;
     if (stdout == null) return null;
-    return AnalyzeEntryModel.tryParseSizeBytes(stdout);
+    return parseDuSizeBytes(stdout);
   }
 
   /// Sums [paths] as one figure, skipping any that cannot be read. Used for
