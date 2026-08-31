@@ -2,6 +2,10 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  /// Held for the window's lifetime; the channel stops answering as soon as
+  /// it is released.
+  private var diskUsageChannel: DiskUsageChannel?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     self.contentViewController = flutterViewController
@@ -24,6 +28,9 @@ class MainFlutterWindow: NSWindow {
     self.isMovableByWindowBackground = true
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+
+    diskUsageChannel = DiskUsageChannel(
+      messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
   }
