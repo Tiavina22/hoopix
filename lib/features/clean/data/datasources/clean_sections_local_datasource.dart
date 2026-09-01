@@ -36,12 +36,14 @@ class CleanSectionsLocalDataSource {
     CleanSectionTargets(browsers, _browsersTargets()),
     CleanSectionTargets(cloudAndOffice, _cloudAndOfficeTargets()),
     CleanSectionTargets(virtualization, _virtualizationTargets()),
+    CleanSectionTargets(applicationSupport, _applicationSupportTargets()),
   ];
 
   static const userEssentials = 'User essentials';
   static const appCaches = 'App caches';
   static const browsers = 'Browsers';
   static const cloudAndOffice = 'Cloud & Office';
+  static const applicationSupport = 'Application Support';
   static const virtualization = 'Virtualization';
 
   List<String> _userEssentialsTargets() {
@@ -444,6 +446,77 @@ class CleanSectionsLocalDataSource {
     '$home/VirtualBox VMs/.cache',
     ..._childrenOf('$home/.vagrant.d/tmp'),
   ];
+
+  /// Port of `clean_application_support_logs`: a generic sweep over every
+  /// `~/Library/Application Support/<app>` directory, but only ever into a
+  /// fixed, known-regenerable set of Electron/Chromium-shaped cache
+  /// subdirectory names — never the app's data as a whole. `Cache` and
+  /// `CachedData` are only eligible when the app also has one of the other
+  /// marker directories, which is what tells an arbitrary app's ambiguous
+  /// "Cache" folder apart from a disk cache Mole can prove is regenerable.
+  ///
+  /// [isCriticalSystemComponent] and [shouldProtectData] gate which app
+  /// directories are even looked into, exactly as the generic per-container
+  /// sweep in [_containerCacheSweepTargets] does for `~/Library/Containers`
+  /// — deep candidate paths here end in a fixed leaf name (`Code Cache`,
+  /// `blob`, ...), never the app's own name, so the funnel's per-candidate
+  /// [shouldProtectPath] check alone could not otherwise rule them out.
+  List<String> _applicationSupportTargets() {
+    final targets = <String>[];
+
+    for (final appDir in _realDirectoriesOf(
+      '$home/Library/Application Support',
+    )) {
+      final appName = appDir.split('/').last;
+      if (isCriticalSystemComponent(appName)) continue;
+      final protectedByName =
+          shouldProtectData(appName) || shouldProtectData(appName.toLowerCase());
+      if (protectedByName) continue;
+      if (shouldProtectPath(appDir, home: home)) continue;
+
+      const alwaysEligible = [
+        'Code Cache',
+        'GPUCache',
+        'DawnCache',
+        'GrShaderCache',
+        'GraphiteDawnCache',
+        'DawnGraphiteCache',
+        'DawnWebGPUCache',
+        'Crashpad/completed',
+      ];
+      for (final leaf in alwaysEligible) {
+        targets.addAll(_childrenOf('$appDir/$leaf'));
+      }
+      if (_hasRegenerableCacheMarkers(appDir)) {
+        targets.addAll(_childrenOf('$appDir/Cache'));
+        targets.addAll(_childrenOf('$appDir/CachedData'));
+      }
+    }
+
+    // Group Containers logs, explicit allowlist.
+    const groupContainerPath =
+        'Library/Group Containers/group.com.apple.contentdelivery';
+    targets.addAll(_childrenOf('$home/$groupContainerPath/Logs'));
+    targets.addAll(_childrenOf('$home/$groupContainerPath/Library/Logs'));
+
+    return targets;
+  }
+
+  bool _hasRegenerableCacheMarkers(String appDir) =>
+      [
+        'Code Cache',
+        'GPUCache',
+        'DawnCache',
+        'GrShaderCache',
+        'GraphiteDawnCache',
+        'DawnGraphiteCache',
+        'DawnWebGPUCache',
+        'Crashpad',
+      ].any(
+        (marker) =>
+            FileSystemEntity.typeSync('$appDir/$marker', followLinks: false) !=
+            FileSystemEntityType.notFound,
+      );
 
   /// Immediate children of [path], or nothing when it cannot be listed.
   /// Symlinks are listed but never followed, so a link cannot redirect the
