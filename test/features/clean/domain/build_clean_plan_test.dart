@@ -156,6 +156,49 @@ void main() {
   );
 
   test(
+    'a privileged-deletion target bypasses the user-space protection funnel',
+    () {
+      // Filename-shaped like a blanket-protected com.apple.* bundle id, the
+      // way the one real System target actually is — the ordinary funnel
+      // would otherwise keep Apple's own well-known system caches by name.
+      const path = '/Library/Caches/com.apple.iconservices.store';
+      final plan = builder()([
+        CleanSectionTargets('System', [path], privilegedDeletionPaths: {path}),
+      ]);
+
+      final candidate = candidateFor(plan, path);
+      expect(candidate.isEligible, isTrue);
+      expect(candidate.requiresPrivilegedDeletion, isTrue);
+      expect(candidate.isRecoverable, isFalse);
+    },
+  );
+
+  test('a privileged-deletion target still honors the user\'s whitelist', () {
+    const path = '/Library/Caches/com.apple.iconservices.store';
+    final plan = builder(whitelistLines: [path])([
+      CleanSectionTargets('System', [path], privilegedDeletionPaths: {path}),
+    ]);
+
+    final candidate = candidateFor(plan, path);
+    expect(candidate.skipReason, CleanSkipReason.whitelisted);
+    expect(candidate.requiresPrivilegedDeletion, isTrue);
+  });
+
+  test(
+    'a target without privileged deletion goes through the funnel as usual',
+    () {
+      const path = '$_home/Library/Keychains/login.keychain-db';
+      final plan = builder()([
+        CleanSectionTargets('System', [path]),
+      ]);
+
+      final candidate = candidateFor(plan, path);
+      expect(candidate.skipReason, CleanSkipReason.protected);
+      expect(candidate.requiresPrivilegedDeletion, isFalse);
+    },
+  );
+
+  test(
     'protection is checked before the whitelist, so the reason is honest',
     () {
       // Whitelisting something already protected must not relabel why it is
@@ -211,6 +254,35 @@ void main() {
 
       expect(plan.ownerCommandCount, 1);
     });
+
+    test(
+      'irreversibleCount counts owner-command and privileged-deletion candidates alike',
+      () {
+        const plan = CleanPlan(
+          candidates: [
+            CleanCandidate(path: '/a', section: 'S'),
+            CleanCandidate(
+              path: '/b',
+              section: 'S',
+              ownerCommand: ['tool', 'clean'],
+            ),
+            CleanCandidate(
+              path: '/c',
+              section: 'S',
+              requiresPrivilegedDeletion: true,
+            ),
+            CleanCandidate(
+              path: '/d',
+              section: 'S',
+              requiresPrivilegedDeletion: true,
+              skipReason: CleanSkipReason.whitelisted,
+            ),
+          ],
+        );
+
+        expect(plan.irreversibleCount, 2);
+      },
+    );
 
     test('groups by section in the order the run would work', () {
       const plan = CleanPlan(

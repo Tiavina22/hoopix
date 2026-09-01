@@ -20,6 +20,7 @@ class CleanCandidate {
     this.sizeBytes,
     this.skipReason,
     this.ownerCommand,
+    this.requiresPrivilegedDeletion = false,
   });
 
   final String path;
@@ -44,8 +45,21 @@ class CleanCandidate {
   /// Trash move is.
   final List<String>? ownerCommand;
 
+  /// When true, approving this candidate deletes [path] through the
+  /// administrator-privileges channel instead of a Trash move — the narrow
+  /// set of root-owned system caches Mole itself only ever reaches through
+  /// `sudo` (`clean_deep_system`, `lib/clean/system.sh`). Not recoverable
+  /// the way a Trash move is, and mutually exclusive with [ownerCommand]:
+  /// a candidate needs at most one non-default removal mechanism.
+  final bool requiresPrivilegedDeletion;
+
   bool get isEligible => skipReason == null;
   bool get isOwnerCommand => ownerCommand != null;
+
+  /// Whether approving this candidate can be undone from the Trash. False
+  /// for both non-default mechanisms — the confirmation copy must not
+  /// promise recoverability it cannot deliver.
+  bool get isRecoverable => !isOwnerCommand && !requiresPrivilegedDeletion;
 
   CleanCandidate withSize(int? sizeBytes) => CleanCandidate(
     path: path,
@@ -53,6 +67,7 @@ class CleanCandidate {
     sizeBytes: sizeBytes,
     skipReason: skipReason,
     ownerCommand: ownerCommand,
+    requiresPrivilegedDeletion: requiresPrivilegedDeletion,
   );
 }
 
@@ -98,4 +113,10 @@ class CleanPlan {
   /// than moving to Trash — the confirmation copy must not promise every
   /// approved item can be put back when this is above zero.
   int get ownerCommandCount => eligible.where((c) => c.isOwnerCommand).length;
+
+  /// How many eligible candidates cannot be put back from the Trash at
+  /// all — an owner command or a privileged system delete. The
+  /// confirmation copy switches to mechanism-neutral wording whenever this
+  /// is above zero, regardless of which mechanism is responsible.
+  int get irreversibleCount => eligible.where((c) => !c.isRecoverable).length;
 }

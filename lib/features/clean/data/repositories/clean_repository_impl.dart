@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:hoopix/core/platform/operation_log.dart';
+import 'package:hoopix/core/platform/privileged_delete.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
@@ -8,6 +9,7 @@ import 'package:hoopix/features/clean/data/datasources/app_leftovers_local_datas
 import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_whitelist.dart';
 import 'package:hoopix/features/clean/domain/entities/path_protection.dart';
@@ -35,12 +37,16 @@ class CleanRepositoryImpl implements CleanRepository {
     DeveloperToolsLocalDataSource? developerTools,
     AppsAndUtilitiesLocalDataSource? appsAndUtilities,
     AppLeftoversLocalDataSource? appLeftovers,
+    SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
     Trash trash = const Trash(),
+    PrivilegedDelete privilegedDelete = const PrivilegedDelete(),
     OperationLog? log,
     ProcessRunner? ownerCommandRunner,
   }) : _trash = trash,
+       _privilegedDelete = privilegedDelete,
+       _system = system,
        _log = log ?? OperationLog(home: home),
        _sections =
            sections ??
@@ -65,7 +71,9 @@ class CleanRepositoryImpl implements CleanRepository {
   final DeveloperToolsLocalDataSource _developerTools;
   final AppsAndUtilitiesLocalDataSource _appsAndUtilities;
   final AppLeftoversLocalDataSource _appLeftovers;
+  final SystemLocalDataSource _system;
   final Trash _trash;
+  final PrivilegedDelete _privilegedDelete;
   final OperationLog _log;
   final SizeProbe _sizeProbe;
   final ProcessRunner _ownerCommandRunner;
@@ -91,6 +99,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _developerTools.enumerate(),
           _appsAndUtilities.enumerate(),
           await _appLeftovers.enumerate(),
+          _system.enumerate(),
         ]);
 
     // Every row is named and grouped before any measuring, so the preview
@@ -124,16 +133,26 @@ class CleanRepositoryImpl implements CleanRepository {
 
     final byTrash = [
       for (final candidate in approved)
-        if (!candidate.isOwnerCommand) candidate,
+        if (!candidate.isOwnerCommand && !candidate.requiresPrivilegedDeletion)
+          candidate,
     ];
     final byCommand = [
       for (final candidate in approved)
         if (candidate.isOwnerCommand) candidate,
     ];
+    final byPrivilegedDelete = [
+      for (final candidate in approved)
+        if (candidate.requiresPrivilegedDeletion) candidate,
+    ];
 
     final failures = <String, String>{
       ...await _trash.moveToTrash([
         for (final candidate in byTrash) candidate.path,
+      ]),
+      // One administrator-privileges prompt for the whole batch, not one
+      // per path — approving several System items should not ask twice.
+      ...await _privilegedDelete.deletePaths([
+        for (final candidate in byPrivilegedDelete) candidate.path,
       ]),
     };
     // Sequential: these run real cache-clean commands, which can be I/O
@@ -149,9 +168,9 @@ class CleanRepositoryImpl implements CleanRepository {
         command: 'clean',
         outcome: refusal != null
             ? OperationOutcome.refused
-            : candidate.isOwnerCommand
-            ? OperationOutcome.cleared
-            : OperationOutcome.trashed,
+            : candidate.isRecoverable
+            ? OperationOutcome.trashed
+            : OperationOutcome.cleared,
         targetPath: candidate.path,
         detail: refusal,
         sizeBytes: candidate.sizeBytes,

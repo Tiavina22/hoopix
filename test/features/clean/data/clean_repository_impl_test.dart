@@ -10,10 +10,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const trashChannel = MethodChannel('fit.hoopix/trash');
+  const privilegedDeleteChannel = MethodChannel('fit.hoopix/privileged_delete');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
-  tearDown(() => messenger.setMockMethodCallHandler(trashChannel, null));
+  tearDown(() {
+    messenger.setMockMethodCallHandler(trashChannel, null);
+    messenger.setMockMethodCallHandler(privilegedDeleteChannel, null);
+  });
 
   late Directory home;
 
@@ -133,6 +137,101 @@ void main() {
       contains('${home.path}/.cacher/logs/run.log'),
     );
   });
+
+  test(
+    'runs privileged deletion instead of moving its path to Trash',
+    () async {
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        fail('Trash must not be called for a privileged-deletion candidate');
+      });
+      messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+        return <Object?, Object?>{};
+      });
+
+      final repository = CleanRepositoryImpl(home: home.path);
+      final candidate = CleanCandidate(
+        path: '/Library/Caches/com.apple.iconservices.store',
+        section: 'System',
+        sizeBytes: 10,
+        requiresPrivilegedDeletion: true,
+      );
+
+      final failures = await repository.approve([candidate]);
+
+      expect(failures, isEmpty);
+      final entries = readLog();
+      expect(entries.single['outcome'], 'cleared');
+      expect(entries.single['path'], candidate.path);
+    },
+  );
+
+  test('records a refusal the privileged-delete channel reports', () async {
+    messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+      final paths = (call.arguments as Map)['paths'] as List;
+      return {
+        for (final p in paths) p: 'administrator privileges were not granted',
+      };
+    });
+
+    final repository = CleanRepositoryImpl(home: home.path);
+    final candidate = CleanCandidate(
+      path: '/Library/Caches/com.apple.iconservices.store',
+      section: 'System',
+      requiresPrivilegedDeletion: true,
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+    final entries = readLog();
+    expect(entries.single['outcome'], 'refused');
+  });
+
+  test(
+    'a batch mixing Trash and privileged-deletion candidates runs both, one prompt for the batch',
+    () async {
+      final trashCalls = <MethodCall>[];
+      final privilegedCalls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        trashCalls.add(call);
+        return <Object?, Object?>{};
+      });
+      messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+        privilegedCalls.add(call);
+        return <Object?, Object?>{};
+      });
+
+      final repository = CleanRepositoryImpl(home: home.path);
+      final trashCandidate = CleanCandidate(
+        path: '${home.path}/Library/Caches/plain',
+        section: 'User essentials',
+        sizeBytes: 5,
+      );
+      final systemCandidate = CleanCandidate(
+        path: '/Library/Caches/com.apple.iconservices.store',
+        section: 'System',
+        sizeBytes: 10,
+        requiresPrivilegedDeletion: true,
+      );
+
+      final failures = await repository.approve([
+        trashCandidate,
+        systemCandidate,
+      ]);
+
+      expect(failures, isEmpty);
+      expect(trashCalls.single.arguments, {
+        'paths': [trashCandidate.path],
+      });
+      expect(privilegedCalls, hasLength(1));
+      expect(privilegedCalls.single.arguments, {
+        'paths': [systemCandidate.path],
+      });
+      final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
+      expect(outcomes[trashCandidate.path], 'trashed');
+      expect(outcomes[systemCandidate.path], 'cleared');
+    },
+  );
 
   test('an empty owner command is a refusal, not a silent no-op', () async {
     final repository = CleanRepositoryImpl(home: home.path);

@@ -57,13 +57,13 @@ class _CleanScreenState extends State<CleanScreen> {
     final plan = _controller.plan;
     if (plan == null || plan.eligible.isEmpty) return;
 
-    final ownerCommandCount = plan.ownerCommandCount;
+    final irreversibleCount = plan.irreversibleCount;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => _CleanConfirmationDialog(
         count: plan.eligible.length,
         sizeBytes: plan.reclaimableBytes,
-        ownerCommandCount: ownerCommandCount,
+        irreversibleCount: irreversibleCount,
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -76,7 +76,7 @@ class _CleanScreenState extends State<CleanScreen> {
         content: Text(
           failures.isNotEmpty
               ? l10n.cleanTrashRefused(failures.length)
-              : ownerCommandCount > 0
+              : irreversibleCount > 0
               ? l10n.cleanCleared(plan.eligible.length)
               : l10n.cleanTrashed(plan.eligible.length),
         ),
@@ -156,7 +156,7 @@ class _Header extends StatelessWidget {
               child: Text(
                 controller.isRemoving
                     ? l10n.cleanWorking
-                    : (plan?.ownerCommandCount ?? 0) > 0
+                    : (plan?.irreversibleCount ?? 0) > 0
                     ? l10n.cleanCleanUp
                     : l10n.cleanMoveToTrash,
               ),
@@ -379,26 +379,27 @@ class _Notice extends StatelessWidget {
 /// "Delete", because that is what happens — and it is why a mistaken
 /// confirmation is still recoverable.
 ///
-/// When the batch includes owner-command candidates ([ownerCommandCount] >
-/// 0), that promise is only partly true, so the title, body and button all
-/// switch to mechanism-neutral copy that says plainly which items can be
-/// put back and which cannot.
+/// When the batch includes candidates that cannot be put back
+/// ([irreversibleCount] > 0 — an owner command or a privileged system
+/// delete), that promise is only partly true, so the title, body and
+/// button all switch to mechanism-neutral copy that says plainly which
+/// items can be put back and which cannot.
 class _CleanConfirmationDialog extends StatelessWidget {
   const _CleanConfirmationDialog({
     required this.count,
     required this.sizeBytes,
-    required this.ownerCommandCount,
+    required this.irreversibleCount,
   });
 
   final int count;
   final int sizeBytes;
-  final int ownerCommandCount;
+  final int irreversibleCount;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final l10n = AppLocalizations.of(context)!;
-    final mixed = ownerCommandCount > 0;
+    final mixed = irreversibleCount > 0;
 
     return AlertDialog(
       backgroundColor: palette.surface,
@@ -412,7 +413,7 @@ class _CleanConfirmationDialog extends StatelessWidget {
         mixed
             ? l10n.cleanConfirmBodyMixed(
                 formatBytes(sizeBytes),
-                ownerCommandCount,
+                irreversibleCount,
               )
             : l10n.cleanConfirmBody(formatBytes(sizeBytes)),
         style: HoopixType.body.copyWith(color: palette.labelSecondary),

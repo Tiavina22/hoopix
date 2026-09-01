@@ -266,6 +266,43 @@ void main() {
     expect(find.text('Cleaned up 1 item.'), findsOneWidget);
   });
 
+  testWidgets(
+    'a batch with a privileged-deletion candidate gets the same honest copy',
+    (tester) async {
+      final repository = _FakeCleanRepository([
+        const CleanPlan(
+          candidates: [
+            CleanCandidate(
+              path: '/Library/Caches/com.apple.iconservices.store',
+              section: 'System',
+              sizeBytes: 2 * 1024 * 1024,
+              requiresPrivilegedDeletion: true,
+            ),
+          ],
+        ),
+      ]);
+
+      await tester.pumpWidget(harness(repository));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(FilledButton, 'Clean Up'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Clean Up'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clean up 1 item?'), findsOneWidget);
+      expect(find.textContaining("can’t be put back"), findsOneWidget);
+      expect(find.textContaining('Move to Trash'), findsNothing);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Clean Up'));
+      await tester.pumpAndSettle();
+
+      expect(repository.approved.single, [
+        '/Library/Caches/com.apple.iconservices.store',
+      ]);
+      expect(find.text('Cleaned up 1 item.'), findsOneWidget);
+    },
+  );
+
   testWidgets('the button is disabled when there is nothing to do', (
     tester,
   ) async {

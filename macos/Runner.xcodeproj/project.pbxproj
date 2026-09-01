@@ -30,6 +30,7 @@
 		A1B2C3D40000000000000101 /* DiskUsageChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000102 /* DiskUsageChannel.swift */; };
 		A1B2C3D40000000000000201 /* TrashChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000202 /* TrashChannel.swift */; };
 		A1B2C3D40000000000000301 /* DirectoryScanChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000302 /* DirectoryScanChannel.swift */; };
+		A1B2C3D40000000000000401 /* PrivilegedDeleteChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000402 /* PrivilegedDeleteChannel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +77,7 @@
 		A1B2C3D40000000000000102 /* DiskUsageChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskUsageChannel.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000202 /* TrashChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashChannel.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000302 /* DirectoryScanChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryScanChannel.swift; sourceTree = "<group>"; };
+		A1B2C3D40000000000000402 /* PrivilegedDeleteChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedDeleteChannel.swift; sourceTree = "<group>"; };
 		33CEB47222A05771004F2AC0 /* Flutter-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Debug.xcconfig"; sourceTree = "<group>"; };
 		33CEB47422A05771004F2AC0 /* Flutter-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Release.xcconfig"; sourceTree = "<group>"; };
 		33CEB47722A0578A004F2AC0 /* Flutter-Generated.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "Flutter-Generated.xcconfig"; path = "ephemeral/Flutter-Generated.xcconfig"; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				A1B2C3D40000000000000102 /* DiskUsageChannel.swift */,
 				A1B2C3D40000000000000202 /* TrashChannel.swift */,
 				A1B2C3D40000000000000302 /* DirectoryScanChannel.swift */,
+				A1B2C3D40000000000000402 /* PrivilegedDeleteChannel.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -357,6 +360,7 @@
 				A1B2C3D40000000000000101 /* DiskUsageChannel.swift in Sources */,
 				A1B2C3D40000000000000201 /* TrashChannel.swift in Sources */,
 				A1B2C3D40000000000000301 /* DirectoryScanChannel.swift in Sources */,
+				A1B2C3D40000000000000401 /* PrivilegedDeleteChannel.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

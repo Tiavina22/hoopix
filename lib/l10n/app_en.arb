@@ -68,7 +68,7 @@
       "count": { "type": "int" }
     }
   },
-  "cleanConfirmBodyMixed": "Frees {size}. {commandCount, plural, one{1 item is cleared by running its own cleanup command and can’t be put back} other{{commandCount} items are cleared by running their own cleanup commands and can’t be put back}} — the rest goes to the Trash and can be undone.",
+  "cleanConfirmBodyMixed": "Frees {size}. {commandCount, plural, one{1 item is cleared directly and can’t be put back} other{{commandCount} items are cleared directly and can’t be put back}} — the rest goes to the Trash and can be undone.",
   "@cleanConfirmBodyMixed": {
     "placeholders": {
       "size": { "type": "String" },
