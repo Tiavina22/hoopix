@@ -24,6 +24,48 @@ void main() {
       )
       .paths;
 
+  test('reaches Helium and Yandex profile-level GPU/shader caches', () async {
+    await makeDir(
+      'Library/Application Support/net.imput.helium/Default/GPUCache/blob',
+    );
+    await makeDir(
+      'Library/Application Support/net.imput.helium/ShaderCache/blob',
+    );
+    await makeDir(
+      'Library/Application Support/Yandex/YandexBrowser/Default/GPUCache/blob',
+    );
+    await makeDir(
+      'Library/Application Support/Yandex/YandexBrowser/ShaderCache/blob',
+    );
+
+    final result = browserTargets();
+
+    expect(
+      result,
+      contains(
+        '${home.path}/Library/Application Support/net.imput.helium/Default/GPUCache/blob',
+      ),
+    );
+    expect(
+      result,
+      contains(
+        '${home.path}/Library/Application Support/net.imput.helium/ShaderCache/blob',
+      ),
+    );
+    expect(
+      result,
+      contains(
+        '${home.path}/Library/Application Support/Yandex/YandexBrowser/Default/GPUCache/blob',
+      ),
+    );
+    expect(
+      result,
+      contains(
+        '${home.path}/Library/Application Support/Yandex/YandexBrowser/ShaderCache/blob',
+      ),
+    );
+  });
+
   test('sweeps each child of the puppeteer browser cache', () async {
     await makeDir('.cache/puppeteer/chrome');
 

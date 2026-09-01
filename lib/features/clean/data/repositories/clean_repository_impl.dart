@@ -7,6 +7,7 @@ import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/app_leftovers_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
@@ -37,6 +38,7 @@ class CleanRepositoryImpl implements CleanRepository {
     DeveloperToolsLocalDataSource? developerTools,
     AppsAndUtilitiesLocalDataSource? appsAndUtilities,
     AppLeftoversLocalDataSource? appLeftovers,
+    BrowserProfileCachesLocalDataSource? browserProfileCaches,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -59,6 +61,9 @@ class CleanRepositoryImpl implements CleanRepository {
        _appsAndUtilities =
            appsAndUtilities ?? AppsAndUtilitiesLocalDataSource(home: home),
        _appLeftovers = appLeftovers ?? AppLeftoversLocalDataSource(home: home),
+       _browserProfileCaches =
+           browserProfileCaches ??
+           BrowserProfileCachesLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -71,6 +76,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final DeveloperToolsLocalDataSource _developerTools;
   final AppsAndUtilitiesLocalDataSource _appsAndUtilities;
   final AppLeftoversLocalDataSource _appLeftovers;
+  final BrowserProfileCachesLocalDataSource _browserProfileCaches;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -99,6 +105,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _developerTools.enumerate(),
           _appsAndUtilities.enumerate(),
           await _appLeftovers.enumerate(),
+          await _browserProfileCaches.enumerate(),
           _system.enumerate(),
         ]);
 

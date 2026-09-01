@@ -302,20 +302,48 @@ class CleanSectionsLocalDataSource {
   /// bundle ids (`com.apple.Safari`, `com.microsoft.edgemac`) trip
   /// [shouldProtectPath]'s blanket vendor rule as top-level Caches
   /// children, so [userEssentials] always keeps rather than cleans them —
-  /// their children are reached here instead, exactly as Mole does.
+  /// their children are reached here instead, exactly as Mole does. Helium
+  /// and Yandex's profile-level GPU/shader caches are neither
+  /// process-guarded nor redundant, so they belong here too.
   ///
-  /// Not ported: every profile-level Code Cache / GPUCache / DawnCache /
-  /// ShaderCache / Crashpad / component_crx_cache row, and Firefox's cache
-  /// entirely — Mole only touches these while the owning browser is closed,
-  /// and hoopix has no process-liveness check yet. Also not ported: the
-  /// Chrome/Edge/Brave old-version pruners (`clean_chrome_old_versions` and
-  /// siblings) — version-comparison logic with its own evidence chain,
-  /// deliberately left for a focused pass of its own.
+  /// The process-guarded profile caches for Chrome, Arc, Dia, Brave,
+  /// Vivaldi and Firefox live in [BrowserProfileCachesLocalDataSource]
+  /// instead, sharing this same section name — that one needs
+  /// [ProcessGuard], which this pure-filesystem class deliberately does
+  /// not depend on.
+  ///
+  /// Not ported: the Chrome/Edge/Brave old-version pruners
+  /// (`clean_chrome_old_versions` and siblings) — version-comparison logic
+  /// with its own evidence chain, deliberately left for a focused pass of
+  /// its own.
   List<String> _browsersTargets() => [
     ..._childrenOf('$home/Library/Caches/com.apple.Safari'),
     ..._childrenOf('$home/Library/Caches/com.microsoft.edgemac'),
     ..._childrenOf('$home/.cache/puppeteer'),
     ..._serviceWorkerCacheTargets(),
+    for (final profile in _realDirectoriesOf(
+      '$home/Library/Application Support/net.imput.helium',
+    ))
+      for (final leaf in ['GPUCache', 'Application Cache'])
+        ..._childrenOf('$profile/$leaf'),
+    for (final leaf in [
+      'component_crx_cache',
+      'extensions_crx_cache',
+      'GrShaderCache',
+      'GraphiteDawnCache',
+      'ShaderCache',
+    ])
+      ..._childrenOf(
+        '$home/Library/Application Support/net.imput.helium/$leaf',
+      ),
+    for (final profile in _realDirectoriesOf(
+      '$home/Library/Application Support/Yandex/YandexBrowser',
+    ))
+      ..._childrenOf('$profile/GPUCache'),
+    for (final leaf in ['ShaderCache', 'GrShaderCache', 'GraphiteDawnCache'])
+      ..._childrenOf(
+        '$home/Library/Application Support/Yandex/YandexBrowser/$leaf',
+      ),
   ];
 
   /// Port of the unguarded `clean_service_worker_cache` calls in

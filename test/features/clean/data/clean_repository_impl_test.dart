@@ -3,8 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hoopix/core/process/process_failure.dart';
+import 'package:hoopix/core/process/process_guard.dart';
+import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/repositories/clean_repository_impl.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
+
+import '../../../support/fake_process_runner.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -135,6 +141,37 @@ void main() {
     expect(
       plan.candidates.map((c) => c.path),
       contains('${home.path}/.cacher/logs/run.log'),
+    );
+  });
+
+  test('the Browser profile caches section is merged into the plan', () async {
+    await Directory(
+      '${home.path}/Library/Application Support/Vivaldi/Default/GPUCache',
+    ).create(recursive: true);
+    await File(
+      '${home.path}/Library/Application Support/Vivaldi/Default/GPUCache/blob',
+    ).create(recursive: true);
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      browserProfileCaches: BrowserProfileCachesLocalDataSource(
+        home: home.path,
+        guard: ProcessGuard(
+          FakeProcessRunner({
+            'pgrep -x Vivaldi': ProcessResult.failure(
+              ProcessFailure.nonZeroExit('pgrep', 1, ''),
+            ),
+          }),
+        ),
+      ),
+    );
+    final plan = await repository.watchPlan().first;
+
+    expect(
+      plan.candidates.map((c) => c.path),
+      contains(
+        '${home.path}/Library/Application Support/Vivaldi/Default/GPUCache/blob',
+      ),
     );
   });
 
