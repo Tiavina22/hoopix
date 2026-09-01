@@ -465,12 +465,14 @@ class CleanSectionsLocalDataSource {
   /// sweeps them whole and repeating them here would double-count their
   /// size.
   ///
-  /// Not ported: UTM is gated on the app not currently running in Mole,
-  /// which hoopix has no process-liveness check for yet. Tart additionally
-  /// reclaims its cache by running `tart prune`, not a Trash move — the
-  /// same owner-command mechanism Developer tools uses — but that command
-  /// is itself process-guarded against a live `tart` invocation, so it
-  /// stays out for the same reason as UTM.
+  /// UTM's one non-redundant target is process-guarded and ported
+  /// separately, in `UtmCachesLocalDataSource`.
+  ///
+  /// Not ported: Tart additionally reclaims its cache by running
+  /// `tart prune`, not a Trash move — the same owner-command mechanism
+  /// Developer tools uses — but that command is itself process-guarded
+  /// against a live `tart` invocation, which this codebase has no check
+  /// for yet.
   List<String> _virtualizationTargets() => [
     '$home/Library/Caches/com.vmware.fusion',
     '$home/VirtualBox VMs/.cache',
