@@ -223,6 +223,33 @@ const _criticalDataPaths = [
   '*coreaudiod*',
 ];
 
+/// Whether [token] — a container bundle id, checked before its cache
+/// directory is even listed — names a system-critical component by loose,
+/// case-insensitive substring match. Port of `is_critical_system_component`
+/// in Mole's `lib/core/app_protection.sh`.
+///
+/// Deliberately wider than [shouldProtectData]'s exact-match keyword rules:
+/// this only gates which containers a generic cache sweep is allowed to
+/// look inside, so a false positive costs nothing while a false negative
+/// means silently deleting a settings/TCC/login-item cache.
+bool isCriticalSystemComponent(String token) {
+  if (token.isEmpty) return false;
+  final lower = token.toLowerCase();
+  const keywords = [
+    'backgroundtaskmanagement',
+    'loginitems',
+    'systempreferences',
+    'systemsettings',
+    'settings',
+    'preferences',
+    'controlcenter',
+    'biometrickit',
+    'sfl',
+    'tcc',
+  ];
+  return keywords.any(lower.contains);
+}
+
 /// Whether a bundle id (or a bare filename) belongs to something whose data
 /// must survive cleanup. Port of `should_protect_data`.
 bool shouldProtectData(String bundleId) {
@@ -331,9 +358,14 @@ bool isOrbstackRuntimePath(String path) {
 /// does not rebuild it: deleting it under a running app makes every later
 /// recognition call fail until the app restarts. Reclaims little, breaks
 /// visibly — so the directory and its immediate parent are both off limits.
-bool holdsCompiledModelCache(String path, {bool Function(String)? directoryExists}) {
+bool holdsCompiledModelCache(
+  String path, {
+  bool Function(String)? directoryExists,
+}) {
   if (path.isEmpty) return false;
-  final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+  final trimmed = path.endsWith('/')
+      ? path.substring(0, path.length - 1)
+      : path;
   if (trimmed.endsWith('/com.apple.e5rt.e5bundlecache')) return true;
 
   final exists = directoryExists ?? (p) => Directory(p).existsSync();
@@ -351,8 +383,9 @@ bool isEndpointSecurityCachePath(String path) {
       !lower.startsWith('/var/folders/')) {
     return false;
   }
-  return endpointSecurityBundlePrefixes
-      .any((prefix) => lower.contains(prefix.toLowerCase()));
+  return endpointSecurityBundlePrefixes.any(
+    (prefix) => lower.contains(prefix.toLowerCase()),
+  );
 }
 
 /// Shared XDG and user-local roots hold state belonging to many unrelated
@@ -361,7 +394,9 @@ bool isEndpointSecurityCachePath(String path) {
 /// directory on a case-insensitive volume. The roots are protected; their
 /// app-specific children (`~/.config/zed`) are not.
 bool _isSharedHomeStateRoot(String path, String home) {
-  final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+  final trimmed = path.endsWith('/')
+      ? path.substring(0, path.length - 1)
+      : path;
   const roots = [
     '.[Cc][Aa][Cc][Hh][Ee]',
     '.[Cc][Oo][Nn][Ff][Ii][Gg]',

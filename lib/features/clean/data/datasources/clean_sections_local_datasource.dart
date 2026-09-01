@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:hoopix/features/clean/domain/entities/deno_cache_root.dart';
+import 'package:hoopix/features/clean/domain/entities/path_protection.dart';
 import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 /// Enumerates what each section proposes to remove.
@@ -31,9 +32,11 @@ class CleanSectionsLocalDataSource {
   /// Mole works through them.
   List<CleanSectionTargets> enumerate() => [
     CleanSectionTargets(userEssentials, _userEssentialsTargets()),
+    CleanSectionTargets(appCaches, _appCachesTargets()),
   ];
 
   static const userEssentials = 'User essentials';
+  static const appCaches = 'App caches';
 
   List<String> _userEssentialsTargets() {
     final targets = <String>[];
@@ -59,12 +62,199 @@ class CleanSectionsLocalDataSource {
     const shared = 'Library/Application Support/com.apple.sharedfilelist';
     for (final kind in ['Applications', 'Documents', 'Servers', 'Hosts']) {
       for (final extension in ['sfl2', 'sfl']) {
-        targets.add('$home/$shared/com.apple.LSSharedFileList.Recent$kind.$extension');
+        targets.add(
+          '$home/$shared/com.apple.LSSharedFileList.Recent$kind.$extension',
+        );
       }
     }
     targets.add('$home/Library/Preferences/com.apple.recentitems.plist');
 
     return targets;
+  }
+
+  /// Everything Mole's `clean_app_caches` proposes that is not already
+  /// covered by the blanket `~/Library/Caches/*` sweep in [userEssentials].
+  /// Several of its named targets (`com.apple.helpd`, `GeoServices`,
+  /// `com.apple.iconservices*`, ...) live directly under `Library/Caches`
+  /// and are top-level children that sweep already proposes; repeating them
+  /// here would only be relabeled duplicates the funnel collapses anyway.
+  ///
+  /// Not ported: `_clean_incomplete_downloads` needs an open-file-handle
+  /// probe hoopix does not have yet, so an in-progress Safari/Chrome
+  /// download is not a safe target here.
+  List<String> _appCachesTargets() {
+    final targets = <String>[];
+
+    targets.addAll(_childrenOf('$home/Library/Saved Application State'));
+    targets.addAll(_childrenOf('$home/Library/DiagnosticReports'));
+    targets.addAll(_childrenOf('$home/Library/IdentityCaches'));
+    targets.addAll(_childrenOf('$home/Library/Suggestions'));
+    targets.add('$home/Library/Calendars/Calendar Cache');
+    for (final source in _childrenOf(
+      '$home/Library/Application Support/AddressBook/Sources',
+    )) {
+      targets.add('$source/Photos.cache');
+    }
+
+    targets.addAll(_supportAppDataTargets());
+    targets.addAll(_sandboxedAppleCacheTargets());
+    targets.addAll(_containerCacheSweepTargets());
+    targets.addAll(_groupContainerCacheSweepTargets());
+    targets.addAll(_handoffPasteboardTargets());
+
+    return targets;
+  }
+
+  /// Port of `clean_support_app_data`: month-old CrashReporter files plus
+  /// Messages preview/sticker caches. Message attachments themselves are
+  /// never touched — only these three cache leaves.
+  List<String> _supportAppDataTargets() => [
+    ..._filesOlderThan(
+      '$home/Library/Application Support/CrashReporter',
+      const Duration(days: 30),
+    ),
+    ..._childrenOf('$home/Library/Messages/StickerCache'),
+    ..._childrenOf('$home/Library/Messages/Caches/Previews/Attachments'),
+    ..._childrenOf('$home/Library/Messages/Caches/Previews/StickerCache'),
+  ];
+
+  /// The curated allowlist of Apple-bundle sandboxed caches from
+  /// `clean_app_caches`. These exist because [_containerCacheSweepTargets]
+  /// protects every `com.apple.*` container by default — this is the
+  /// reviewed set of exceptions, not a broader Apple sweep.
+  List<String> _sandboxedAppleCacheTargets() {
+    const roots = [
+      'Containers/com.apple.wallpaper.agent/Data/Library/Caches',
+      'Containers/com.apple.mediaanalysisd/Data/Library/Caches',
+      'Containers/com.apple.mediaanalysisd/Data/tmp',
+      'Containers/com.apple.AppStore/Data/Library/Caches',
+      'Containers/com.apple.configurator.xpc.InternetService/Data/tmp',
+      'Containers/com.apple.wallpaper.extension.aerials/Data/tmp',
+      'Containers/com.apple.geod/Data/tmp',
+      'Containers/com.apple.stocks/Data/Library/Caches',
+      'Containers/com.apple.AvatarUI.AvatarPickerMemojiPicker/Data/Library/Caches',
+      'Containers/com.apple.AMPArtworkAgent/Data/Library/Caches',
+      'Containers/com.apple.CoreDevice.CoreDeviceService/Data/Library/Caches',
+      'Containers/com.apple.NeptuneOneExtension/Data/Library/Caches',
+      'Containers/com.apple.AppleMediaServicesUI.UtilityExtension/Data/tmp',
+    ];
+    return [for (final root in roots) ..._childrenOf('$home/Library/$root')];
+  }
+
+  /// Port of `process_container_cache`: every non-critical, non-protected
+  /// container's cache directory, one level deep. [isCriticalSystemComponent]
+  /// and [shouldProtectData] decide which containers are even looked into;
+  /// every surviving item is still re-checked by the funnel.
+  List<String> _containerCacheSweepTargets() => [
+    for (final container in _realDirectoriesOf('$home/Library/Containers'))
+      if (!isCriticalSystemComponent(container.split('/').last) &&
+          !shouldProtectData(container.split('/').last))
+        ..._realDirChildren('$container/Data/Library/Caches'),
+  ];
+
+  /// Port of `clean_group_container_caches`. Apple's own group containers
+  /// are skipped outright; a container whose id also owns a Safari Web
+  /// Extension container is skipped so cleanup cannot trigger extension
+  /// reinitialization. A protected owner still contributes its logs, just
+  /// not its tmp/Caches.
+  List<String> _groupContainerCacheSweepTargets() {
+    final targets = <String>[];
+
+    for (final container in _realDirectoriesOf(
+      '$home/Library/Group Containers',
+    )) {
+      final id = container.split('/').last;
+      if (id.startsWith('com.apple.') ||
+          id.startsWith('group.com.apple.') ||
+          id.startsWith('systemgroup.com.apple.')) {
+        continue;
+      }
+      if (_hasSafariSibling(id)) continue;
+
+      final normalizedId = id.startsWith('group.')
+          ? id.substring('group.'.length)
+          : id;
+      final protected =
+          shouldProtectData(id) || shouldProtectData(normalizedId);
+
+      final candidates = [
+        '$container/Logs',
+        '$container/Library/Logs',
+        if (!protected) '$container/tmp',
+        if (!protected) '$container/Library/tmp',
+        if (!protected) '$container/Caches',
+        if (!protected) '$container/Library/Caches',
+      ];
+      for (final candidate in candidates) {
+        targets.addAll(_realDirChildren(candidate));
+      }
+    }
+
+    return targets;
+  }
+
+  /// A sibling `~/Library/Containers/<id>` holding anything matching
+  /// `*Safari*` or `*safari*` marks [id]'s group container as belonging to a
+  /// Safari Web Extension.
+  bool _hasSafariSibling(String id) {
+    for (final child in _childrenOf('$home/Library/Containers/$id')) {
+      final name = child.split('/').last;
+      if (name.contains('Safari') || name.contains('safari')) return true;
+    }
+    return false;
+  }
+
+  /// Port of `clean_handoff_pasteboard_cache`: entries older than an hour in
+  /// the Universal Clipboard staging directory.
+  List<String> _handoffPasteboardTargets() {
+    const pasteboard =
+        'Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard';
+    final dir = '$home/$pasteboard';
+    if (!_isRealDirectory(dir)) return const [];
+
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 60));
+    final targets = <String>[];
+    try {
+      for (final entity in _directory(dir).listSync(followLinks: false)) {
+        if (entity is Link) continue;
+        if (entity.statSync().modified.isBefore(cutoff)) {
+          targets.add(entity.path);
+        }
+      }
+    } on FileSystemException {
+      // Unreadable is not "empty" anywhere else in this class either; the
+      // pasteboard cache is simply left alone for this run.
+    }
+    return targets;
+  }
+
+  /// Files under [root], at most 5 directories deep, last modified more
+  /// than [age] ago. Port of `safe_find_delete "$root" "*" ... "f"`.
+  List<String> _filesOlderThan(String root, Duration age, {int maxDepth = 5}) {
+    if (!_isRealDirectory(root)) return const [];
+    final cutoff = DateTime.now().subtract(age);
+    final targets = <String>[];
+
+    void walk(String dir, int depth) {
+      if (depth > maxDepth) return;
+      List<FileSystemEntity> entries;
+      try {
+        entries = _directory(dir).listSync(followLinks: false);
+      } on FileSystemException {
+        return;
+      }
+      for (final entity in entries) {
+        if (entity is Directory) {
+          walk(entity.path, depth + 1);
+        } else if (entity is File &&
+            entity.statSync().modified.isBefore(cutoff)) {
+          targets.add(entity.path);
+        }
+      }
+    }
+
+    walk(root, 1);
+    return targets..sort();
   }
 
   /// Immediate children of [path], or nothing when it cannot be listed.
@@ -80,4 +270,28 @@ class CleanSectionsLocalDataSource {
       return const [];
     }
   }
+
+  /// Immediate real (non-symlink) subdirectories of [path]. Used where a
+  /// symlinked container or candidate must be skipped entirely rather than
+  /// listed as a target in its own right — Mole never descends into one to
+  /// decide what else to propose.
+  List<String> _realDirectoriesOf(String path) {
+    try {
+      return [
+        for (final entity in _directory(path).listSync(followLinks: false))
+          if (entity is Directory) entity.path,
+      ]..sort();
+    } on FileSystemException {
+      return const [];
+    }
+  }
+
+  /// Children of [path], but only when [path] itself is a real directory.
+  /// A symlinked cache/tmp/Logs candidate is skipped rather than followed.
+  List<String> _realDirChildren(String path) =>
+      _isRealDirectory(path) ? _childrenOf(path) : const [];
+
+  bool _isRealDirectory(String path) =>
+      FileSystemEntity.typeSync(path, followLinks: false) ==
+      FileSystemEntityType.directory;
 }

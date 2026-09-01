@@ -17,8 +17,13 @@ void main() {
   Future<void> make(String relative) =>
       Directory('${home.path}/$relative').create(recursive: true);
 
-  List<String> targetsOf(CleanSectionsLocalDataSource source) =>
-      source.enumerate().single.paths;
+  List<String> targetsOf(CleanSectionsLocalDataSource source) => source
+      .enumerate()
+      .singleWhere(
+        (section) =>
+            section.section == CleanSectionsLocalDataSource.userEssentials,
+      )
+      .paths;
 
   CleanSectionsLocalDataSource source({String? denoDir}) =>
       CleanSectionsLocalDataSource(home: home.path, denoDir: denoDir);
@@ -46,17 +51,20 @@ void main() {
     expect(targets, contains('${home.path}/Library/Caches/com.example.app'));
   });
 
-  test('an unresolvable DENO_DIR empties the cache batch rather than sweep it', () async {
-    await make('Library/Caches/com.example.app');
-    await make('Library/Logs/SomeApp');
+  test(
+    'an unresolvable DENO_DIR empties the cache batch rather than sweep it',
+    () async {
+      await make('Library/Caches/com.example.app');
+      await make('Library/Logs/SomeApp');
 
-    final targets = targetsOf(source(denoDir: 'relative/deno'));
+      final targets = targetsOf(source(denoDir: 'relative/deno'));
 
-    // Sweeping past an unresolved owner root is worse than cleaning nothing.
-    expect(targets.any((p) => p.contains('/Library/Caches/')), isFalse);
-    // The unrelated categories still work.
-    expect(targets, contains('${home.path}/Library/Logs/SomeApp'));
-  });
+      // Sweeping past an unresolved owner root is worse than cleaning nothing.
+      expect(targets.any((p) => p.contains('/Library/Caches/')), isFalse);
+      // The unrelated categories still work.
+      expect(targets, contains('${home.path}/Library/Logs/SomeApp'));
+    },
+  );
 
   test('sweeps user log directories', () async {
     await make('Library/Logs/SomeApp');
@@ -87,7 +95,9 @@ void main() {
 
   test('lists a symlink without following it', () async {
     await make('Library/Caches/real');
-    await Link('${home.path}/Library/Caches/alias').create('${home.path}/Library/Caches/real');
+    await Link(
+      '${home.path}/Library/Caches/alias',
+    ).create('${home.path}/Library/Caches/real');
 
     final targets = targetsOf(source());
 
