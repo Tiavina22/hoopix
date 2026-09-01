@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
+import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 /// Ports `clean_tart_caches` (`lib/clean/user.sh`): `tart` reclaims its own
@@ -15,7 +16,7 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// Mole re-checks the same process guard twice: once before showing the
 /// preview line, again immediately before actually running `tart prune`,
 /// closing the window between scan and approval. [enumerate] is the first
-/// check; the second is [CleanSectionTargets.ownerCommandRechecks], applied
+/// check; the second is [CleanSectionTargets.recheckProcessGuards], applied
 /// by `CleanRepositoryImpl` at the moment it runs the command.
 ///
 /// `--older-than 30` matches the shared 30-day orphan-age default used
@@ -55,8 +56,8 @@ class TartCacheLocalDataSource {
       CleanSectionsLocalDataSource.virtualization,
       [cacheRoot],
       ownerCommands: {cacheRoot: _pruneCommand},
-      ownerCommandRechecks: {
-        cacheRoot: const ['tart'],
+      recheckProcessGuards: {
+        cacheRoot: const ProcessRecheck(exactNames: ['tart']),
       },
     );
   }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
+import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 /// Proposes the process-guarded profile-level caches of `clean_browsers`
@@ -25,6 +26,13 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// `Dia` directory whole; those two lines are deliberately left out here
 /// to avoid double-counting.
 ///
+/// Chrome and Firefox each get a second guard check immediately before
+/// their own removal, via [CleanSectionTargets.recheckProcessGuards] —
+/// mirrors Mole's `_clean_chrome_profile_caches_guarded` /
+/// `_clean_firefox_caches_guarded`, which recheck the same way right
+/// before deleting. Arc, Dia, Brave and Vivaldi only check once in Mole
+/// too, so their targets carry no recheck here either.
+///
 /// Not ported: the Chrome/Edge/Brave old-version pruners — their own
 /// evidence chain, left for a focused pass of its own.
 class BrowserProfileCachesLocalDataSource {
@@ -41,16 +49,31 @@ class BrowserProfileCachesLocalDataSource {
   final ProcessGuard _guard;
   final Directory Function(String path) _directory;
 
+  static const _chromeRecheck = ProcessRecheck(
+    exactNames: ['Google Chrome', 'Google Chrome Helper'],
+    patterns: ['/Google Chrome.app/'],
+  );
+  static const _firefoxRecheck = ProcessRecheck(exactNames: ['Firefox']);
+
   Future<CleanSectionTargets> enumerate() async {
+    final chrome = await _chromeTargets();
+    final firefox = await _firefoxTargets();
     final targets = <String>[
-      ...await _chromeTargets(),
+      ...chrome,
       ...await _arcTargets(),
       ...await _diaTargets(),
       ...await _braveTargets(),
       ...await _vivaldiTargets(),
-      ...await _firefoxTargets(),
+      ...firefox,
     ];
-    return CleanSectionTargets(CleanSectionsLocalDataSource.browsers, targets);
+    return CleanSectionTargets(
+      CleanSectionsLocalDataSource.browsers,
+      targets,
+      recheckProcessGuards: {
+        for (final path in chrome) path: _chromeRecheck,
+        for (final path in firefox) path: _firefoxRecheck,
+      },
+    );
   }
 
   Future<List<String>> _chromeTargets() async {

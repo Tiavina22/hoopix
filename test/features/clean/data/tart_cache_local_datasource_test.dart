@@ -71,7 +71,7 @@ void main() {
         '--older-than',
         '30',
       ]);
-      expect(result.ownerCommandRechecks[cacheRoot], ['tart']);
+      expect(result.recheckProcessGuards[cacheRoot]?.exactNames, ['tart']);
     },
   );
 

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
+import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 /// Proposes the Xcode-tooling-guarded slice of `clean_xcode_tools` /
@@ -21,6 +22,14 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// DerivedData entry is proposed as its whole project directory, the way
 /// Mole does — the funnel underneath still applies per-project protection,
 /// whitelist and compiled-model-cache checks.
+///
+/// Every target here gets a second guard check immediately before its own
+/// removal, via [CleanSectionTargets.recheckProcessGuards] — mirrors
+/// Mole's `_app_cache_safe_clean_guarded`, which `clean_xcode_tools` and
+/// `clean_xcode_derived_data` both route every one of these three targets
+/// through, rechecking per item right before deleting (`clean_xcode_derived_data`
+/// even names why: "Sizing is timeout-bounded but can still take long
+/// enough for a build to start").
 ///
 /// Not ported: Simulator caches
 /// (`~/Library/Developer/CoreSimulator/{Caches,Devices/*/data/tmp}`,
@@ -71,9 +80,11 @@ class XcodeCachesLocalDataSource {
       ..._childrenOf('$home/Library/Developer/Xcode/Products'),
       ..._realDirectoriesOf('$home/Library/Developer/Xcode/DerivedData'),
     ];
+    final recheck = ProcessRecheck(exactNames: _xcodeToolingProcesses);
     return CleanSectionTargets(
       DeveloperToolsLocalDataSource.developerTools,
       targets,
+      recheckProcessGuards: {for (final path in targets) path: recheck},
     );
   }
 

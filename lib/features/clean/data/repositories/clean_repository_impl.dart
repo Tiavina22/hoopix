@@ -55,7 +55,7 @@ class CleanRepositoryImpl implements CleanRepository {
     PrivilegedDelete privilegedDelete = const PrivilegedDelete(),
     OperationLog? log,
     ProcessRunner? ownerCommandRunner,
-    ProcessGuard? ownerCommandRecheckGuard,
+    ProcessGuard? recheckGuard,
   }) : _trash = trash,
        _privilegedDelete = privilegedDelete,
        _system = system,
@@ -83,8 +83,8 @@ class CleanRepositoryImpl implements CleanRepository {
        _ownerCommandRunner =
            ownerCommandRunner ??
            const ProcessRunner(timeout: _ownerCommandTimeout),
-       _ownerCommandRecheckGuard =
-           ownerCommandRecheckGuard ??
+       _recheckGuard =
+           recheckGuard ??
            const ProcessGuard(ProcessRunner(timeout: Duration(seconds: 5))),
        _readWhitelist = readWhitelist ?? _readWhitelistFile;
 
@@ -104,7 +104,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final OperationLog _log;
   final SizeProbe _sizeProbe;
   final ProcessRunner _ownerCommandRunner;
-  final ProcessGuard _ownerCommandRecheckGuard;
+  final ProcessGuard _recheckGuard;
   final List<String>? Function(String home) _readWhitelist;
 
   @override
@@ -164,11 +164,24 @@ class CleanRepositoryImpl implements CleanRepository {
   Future<Map<String, String>> approve(List<CleanCandidate> approved) async {
     if (approved.isEmpty) return const {};
 
-    final byTrash = [
-      for (final candidate in approved)
-        if (!candidate.isOwnerCommand && !candidate.requiresPrivilegedDeletion)
-          candidate,
-    ];
+    final failures = <String, String>{};
+
+    // A candidate carrying a recheck must clear it immediately before its
+    // own removal, regardless of mechanism — sizing every eligible
+    // candidate, then waiting on the user, is exactly the window Mole
+    // closes with its own second process check right before deleting.
+    final byTrash = <CleanCandidate>[];
+    for (final candidate in approved) {
+      if (candidate.isOwnerCommand || candidate.requiresPrivilegedDeletion) {
+        continue;
+      }
+      final failure = await _recheckFailure(candidate.recheckProcessGuard);
+      if (failure != null) {
+        failures[candidate.path] = failure;
+      } else {
+        byTrash.add(candidate);
+      }
+    }
     final byCommand = [
       for (final candidate in approved)
         if (candidate.isOwnerCommand) candidate,
@@ -178,7 +191,7 @@ class CleanRepositoryImpl implements CleanRepository {
         if (candidate.requiresPrivilegedDeletion) candidate,
     ];
 
-    final failures = <String, String>{
+    failures.addAll({
       ...await _trash.moveToTrash([
         for (final candidate in byTrash) candidate.path,
       ]),
@@ -187,7 +200,7 @@ class CleanRepositoryImpl implements CleanRepository {
       ...await _privilegedDelete.deletePaths([
         for (final candidate in byPrivilegedDelete) candidate.path,
       ]),
-    };
+    });
     // Sequential: these run real cache-clean commands, which can be I/O
     // heavy, so overlapping several is worth avoiding rather than saving.
     for (final candidate in byCommand) {
@@ -215,33 +228,34 @@ class CleanRepositoryImpl implements CleanRepository {
   /// Runs [candidate]'s owner command. Returns null on success, or a failure
   /// message — there is no native refusal channel for this the way Trash
   /// has one, so the process's own exit code is the whole signal.
-  ///
-  /// When [CleanCandidate.recheckProcessGuard] is set, this reconfirms every
-  /// named process is still not running immediately before running the
-  /// command — the scan-time check that made the candidate eligible can be
-  /// stale by the time the user approves it. Mirrors Mole's own second
-  /// `mole_pgrep_any` check right before it runs `tart prune`.
   Future<String?> _runOwnerCommand(CleanCandidate candidate) async {
     final command = candidate.ownerCommand;
     if (command == null || command.isEmpty) return 'no command to run';
 
-    final recheck = candidate.recheckProcessGuard;
-    if (recheck != null) {
-      final liveness = await _ownerCommandRecheckGuard.check(
-        exactNames: recheck,
-      );
-      if (liveness != ProcessLiveness.notRunning) {
-        return liveness == ProcessLiveness.running
-            ? 'skipped: ${recheck.join(', ')} started running'
-            : 'skipped: process state could not be confirmed';
-      }
-    }
+    final recheckFailure = await _recheckFailure(candidate.recheckProcessGuard);
+    if (recheckFailure != null) return recheckFailure;
 
     final result = await _ownerCommandRunner.run(
       command.first,
       command.skip(1).toList(),
     );
     return result.isSuccess ? null : '${result.failure}';
+  }
+
+  /// Null when [recheck] is absent or confirms nothing named in it is
+  /// running; otherwise a failure message. Shared by the Trash and
+  /// owner-command removal paths, the only two mechanisms a
+  /// [CleanCandidate.recheckProcessGuard] can attach to.
+  Future<String?> _recheckFailure(ProcessRecheck? recheck) async {
+    if (recheck == null) return null;
+    final liveness = await _recheckGuard.check(
+      exactNames: recheck.exactNames,
+      patterns: recheck.patterns,
+    );
+    if (liveness == ProcessLiveness.notRunning) return null;
+    return liveness == ProcessLiveness.running
+        ? 'skipped: process started running'
+        : 'skipped: process state could not be confirmed';
   }
 
   /// Null when the user has no whitelist file, which is what selects the

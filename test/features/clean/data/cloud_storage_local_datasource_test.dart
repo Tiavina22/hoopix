@@ -6,6 +6,7 @@ import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
+import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 import '../../../support/fake_process_runner.dart';
 
@@ -29,13 +30,18 @@ void main() {
   Future<void> makeDir(String relative) =>
       Directory('${home.path}/$relative').create(recursive: true);
 
-  Future<List<String>> targets(Map<String, ProcessResult> responses) async {
+  Future<CleanSectionTargets> enumerate(
+    Map<String, ProcessResult> responses,
+  ) async {
     final source = CloudStorageLocalDataSource(
       home: home.path,
       guard: ProcessGuard(FakeProcessRunner(responses)),
     );
-    return (await source.enumerate()).paths;
+    return source.enumerate();
   }
+
+  Future<List<String>> targets(Map<String, ProcessResult> responses) async =>
+      (await enumerate(responses)).paths;
 
   test('section name matches the constant Cloud & Office uses', () async {
     final source = CloudStorageLocalDataSource(
@@ -129,6 +135,27 @@ void main() {
       contains('${home.path}/Library/Caches/com.microsoft.OneDrive'),
     );
   });
+
+  test(
+    'every proposed path carries a recheck naming its own sync client',
+    () async {
+      final result = await enumerate({
+        'pgrep -x Dropbox': _notRunning(),
+        'pgrep -x Google Drive': _notRunning(),
+        'pgrep -x OneDrive': _notRunning(),
+      });
+
+      final dropbox = '${home.path}/Library/Caches/com.getdropbox.dropbox';
+      final googleDrive = '${home.path}/Library/Caches/com.google.GoogleDrive';
+      final oneDrive = '${home.path}/Library/Caches/com.microsoft.OneDrive';
+
+      expect(result.recheckProcessGuards[dropbox]?.exactNames, ['Dropbox']);
+      expect(result.recheckProcessGuards[googleDrive]?.exactNames, [
+        'Google Drive',
+      ]);
+      expect(result.recheckProcessGuards[oneDrive]?.exactNames, ['OneDrive']);
+    },
+  );
 
   test('a missing home tree does not throw', () async {
     final result = await targets({

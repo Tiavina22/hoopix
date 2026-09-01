@@ -121,6 +121,106 @@ void main() {
     },
   );
 
+  test('refuses a Trash candidate whose recheck guard finds the process now '
+      'running, without moving it to Trash', () async {
+    messenger.setMockMethodCallHandler(trashChannel, (call) async {
+      fail('Trash must not be called once the recheck finds it running');
+    });
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      recheckGuard: ProcessGuard(
+        FakeProcessRunner({
+          'pgrep -x Google Chrome': ProcessResult.success('123'),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '${home.path}/Library/Application Support/Google/Chrome/blob',
+      section: 'Browsers',
+      sizeBytes: 5,
+      recheckProcessGuard: const ProcessRecheck(exactNames: ['Google Chrome']),
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+    final entries = readLog();
+    expect(entries.single['outcome'], 'refused');
+  });
+
+  test('refuses a Trash candidate whose recheck guard cannot confirm the '
+      'process state', () async {
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      recheckGuard: ProcessGuard(
+        FakeProcessRunner({
+          'pgrep -x Google Chrome': ProcessResult.failure(
+            ProcessFailure.nonZeroExit('pgrep', 2, 'usage'),
+          ),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '${home.path}/Library/Application Support/Google/Chrome/blob',
+      section: 'Browsers',
+      recheckProcessGuard: const ProcessRecheck(exactNames: ['Google Chrome']),
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+  });
+
+  test(
+    'moves a Trash candidate once its recheck guard reconfirms the process '
+    'is not running, leaving an unguarded sibling untouched by the check',
+    () async {
+      final trashCalls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        trashCalls.add(call);
+        return <Object?, Object?>{};
+      });
+
+      final repository = CleanRepositoryImpl(
+        home: home.path,
+        recheckGuard: ProcessGuard(
+          FakeProcessRunner({
+            'pgrep -x Google Chrome': ProcessResult.failure(
+              ProcessFailure.nonZeroExit('pgrep', 1, ''),
+            ),
+          }),
+        ),
+      );
+      final guardedCandidate = CleanCandidate(
+        path: '${home.path}/Library/Application Support/Google/Chrome/blob',
+        section: 'Browsers',
+        sizeBytes: 5,
+        recheckProcessGuard: const ProcessRecheck(
+          exactNames: ['Google Chrome'],
+        ),
+      );
+      final plainCandidate = CleanCandidate(
+        path: '${home.path}/Library/Caches/plain',
+        section: 'User essentials',
+        sizeBytes: 5,
+      );
+
+      final failures = await repository.approve([
+        guardedCandidate,
+        plainCandidate,
+      ]);
+
+      expect(failures, isEmpty);
+      expect(trashCalls.single.arguments, {
+        'paths': [guardedCandidate.path, plainCandidate.path],
+      });
+      final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
+      expect(outcomes[guardedCandidate.path], 'trashed');
+      expect(outcomes[plainCandidate.path], 'trashed');
+    },
+  );
+
   test('the Developer tools section is merged into the plan', () async {
     await Directory(
       '${home.path}/.yarn/cache/some-package',
@@ -296,7 +396,7 @@ void main() {
     final cacheRoot = '${home.path}/.tart/cache';
     final candidate = plan.candidates.singleWhere((c) => c.path == cacheRoot);
     expect(candidate.ownerCommand, isNotNull);
-    expect(candidate.recheckProcessGuard, ['tart']);
+    expect(candidate.recheckProcessGuard?.exactNames, ['tart']);
   });
 
   test('refuses an owner command whose recheck guard finds the process now '
@@ -307,7 +407,7 @@ void main() {
     final repository = CleanRepositoryImpl(
       home: home.path,
       ownerCommandRunner: commandRunner,
-      ownerCommandRecheckGuard: ProcessGuard(
+      recheckGuard: ProcessGuard(
         FakeProcessRunner({'pgrep -x tart': ProcessResult.success('123')}),
       ),
     );
@@ -322,7 +422,7 @@ void main() {
         '--older-than',
         '30',
       ],
-      recheckProcessGuard: const ['tart'],
+      recheckProcessGuard: const ProcessRecheck(exactNames: ['tart']),
     );
 
     final failures = await repository.approve([candidate]);
@@ -336,7 +436,7 @@ void main() {
       'process state', () async {
     final repository = CleanRepositoryImpl(
       home: home.path,
-      ownerCommandRecheckGuard: ProcessGuard(
+      recheckGuard: ProcessGuard(
         FakeProcessRunner({
           'pgrep -x tart': ProcessResult.failure(
             ProcessFailure.nonZeroExit('pgrep', 2, 'usage'),
@@ -348,7 +448,7 @@ void main() {
       path: '${home.path}/.tart/cache',
       section: 'Virtualization',
       ownerCommand: const ['tart', 'prune'],
-      recheckProcessGuard: const ['tart'],
+      recheckProcessGuard: const ProcessRecheck(exactNames: ['tart']),
     );
 
     final failures = await repository.approve([candidate]);
@@ -364,7 +464,7 @@ void main() {
     final repository = CleanRepositoryImpl(
       home: home.path,
       ownerCommandRunner: commandRunner,
-      ownerCommandRecheckGuard: ProcessGuard(
+      recheckGuard: ProcessGuard(
         FakeProcessRunner({
           'pgrep -x tart': ProcessResult.failure(
             ProcessFailure.nonZeroExit('pgrep', 1, ''),
@@ -383,7 +483,7 @@ void main() {
         '--older-than',
         '30',
       ],
-      recheckProcessGuard: const ['tart'],
+      recheckProcessGuard: const ProcessRecheck(exactNames: ['tart']),
     );
 
     final failures = await repository.approve([candidate]);

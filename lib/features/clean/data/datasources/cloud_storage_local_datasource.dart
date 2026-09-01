@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
+import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 /// Proposes the process-guarded slice of `clean_cloud_storage`
@@ -19,6 +20,12 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// `com.microsoft.OneDrive` their respective vendor keywords), so
 /// `userEssentials` can never clean them — this is the only way to reach
 /// them, not a redundant repeat.
+///
+/// All three get a second guard check immediately before their own
+/// removal, via [CleanSectionTargets.recheckProcessGuards] — mirrors
+/// Mole's own `_clean_dropbox_caches_guarded` and the equivalent inline
+/// guarded calls for Google Drive and OneDrive in `clean_cloud_storage`,
+/// all of which recheck the same way right before deleting.
 class CloudStorageLocalDataSource {
   CloudStorageLocalDataSource({
     required this.home,
@@ -33,15 +40,24 @@ class CloudStorageLocalDataSource {
   final ProcessGuard _guard;
   final Directory Function(String path) _directory;
 
+  static const _dropboxRecheck = ProcessRecheck(exactNames: ['Dropbox']);
+  static const _googleDriveRecheck = ProcessRecheck(
+    exactNames: ['Google Drive'],
+  );
+  static const _oneDriveRecheck = ProcessRecheck(exactNames: ['OneDrive']);
+
   Future<CleanSectionTargets> enumerate() async {
-    final targets = <String>[
-      ...await _dropboxTargets(),
-      ...await _googleDriveTargets(),
-      ...await _oneDriveTargets(),
-    ];
+    final dropbox = await _dropboxTargets();
+    final googleDrive = await _googleDriveTargets();
+    final oneDrive = await _oneDriveTargets();
     return CleanSectionTargets(
       CleanSectionsLocalDataSource.cloudAndOffice,
-      targets,
+      [...dropbox, ...googleDrive, ...oneDrive],
+      recheckProcessGuards: {
+        for (final path in dropbox) path: _dropboxRecheck,
+        for (final path in googleDrive) path: _googleDriveRecheck,
+        for (final path in oneDrive) path: _oneDriveRecheck,
+      },
     );
   }
 

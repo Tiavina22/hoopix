@@ -12,6 +12,17 @@ enum CleanSkipReason {
   compiledModelCache,
 }
 
+/// Exact process names and/or full-command-line patterns a candidate's
+/// removal must reconfirm are still not running immediately before it
+/// happens — the same shape [ProcessGuard.check] takes, kept here free of
+/// any process/platform dependency so this stays a plain domain value.
+class ProcessRecheck {
+  const ProcessRecheck({this.exactNames = const [], this.patterns = const []});
+
+  final List<String> exactNames;
+  final List<String> patterns;
+}
+
 /// One path a section proposed, with what became of it.
 class CleanCandidate {
   const CleanCandidate({
@@ -54,14 +65,18 @@ class CleanCandidate {
   /// a candidate needs at most one non-default removal mechanism.
   final bool requiresPrivilegedDeletion;
 
-  /// When set, an owner command must reconfirm every one of these exact
-  /// process names is still not running immediately before it runs — the
-  /// scan-time check in [isEligible] alone leaves a window between preview
-  /// and approval where the owning app could have been launched. Mirrors
-  /// Mole's own second `mole_pgrep_any` check right before it runs `tart
-  /// prune`. Null for an owner command with no such race, or for the
-  /// default Trash/privileged-delete mechanisms.
-  final List<String>? recheckProcessGuard;
+  /// When set, this candidate's removal — Trash move or owner command
+  /// alike — must reconfirm none of these processes are running
+  /// immediately before it happens. The scan-time check that made the
+  /// candidate eligible in the first place leaves a window before
+  /// approval — sizing every candidate, then waiting on the user — where
+  /// the owning app could have been launched. Mirrors Mole's own second
+  /// process check right before its own deletion call, used for exactly
+  /// the same handful of higher-risk targets (Chrome/Firefox profile
+  /// caches, Dropbox/Google Drive/OneDrive, Xcode's cache/build
+  /// products/DerivedData, Tart's prune). Null when the candidate's
+  /// mechanism has no such race in Mole either.
+  final ProcessRecheck? recheckProcessGuard;
 
   bool get isEligible => skipReason == null;
   bool get isOwnerCommand => ownerCommand != null;

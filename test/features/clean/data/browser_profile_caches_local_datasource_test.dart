@@ -6,6 +6,7 @@ import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
+import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 import '../../../support/fake_process_runner.dart';
 
@@ -31,13 +32,18 @@ void main() {
   Future<void> makeDir(String relative) =>
       Directory('${home.path}/$relative').create(recursive: true);
 
-  Future<List<String>> targets(Map<String, ProcessResult> responses) async {
+  Future<CleanSectionTargets> enumerate(
+    Map<String, ProcessResult> responses,
+  ) async {
     final source = BrowserProfileCachesLocalDataSource(
       home: home.path,
       guard: ProcessGuard(FakeProcessRunner(responses)),
     );
-    return (await source.enumerate()).paths;
+    return source.enumerate();
   }
+
+  Future<List<String>> targets(Map<String, ProcessResult> responses) async =>
+      (await enumerate(responses)).paths;
 
   test('section name matches the constant Browsers uses', () async {
     final source = BrowserProfileCachesLocalDataSource(
@@ -248,6 +254,40 @@ void main() {
         '${home.path}/Library/Application Support/Firefox/Profiles/abc.default/cache2/blob',
       ),
     );
+  });
+
+  test('Chrome and Firefox paths carry a recheck; Arc paths do not', () async {
+    await makeDir(
+      'Library/Application Support/Google/Chrome/Default/Code Cache/blob',
+    );
+    await makeDir('Library/Caches/Firefox/blob');
+    await makeDir('Library/Application Support/Arc/Default/GPUCache/blob');
+
+    final result = await enumerate({
+      'pgrep -x Google Chrome': _notRunning(),
+      'pgrep -x Google Chrome Helper': _notRunning(),
+      'pgrep -f /Google Chrome.app/': _notRunning(),
+      'pgrep -x Firefox': _notRunning(),
+      'pgrep -x Arc': _notRunning(),
+    });
+
+    final chromeCache =
+        '${home.path}/Library/Application Support/Google/Chrome'
+        '/Default/Code Cache/blob';
+    final firefoxCache = '${home.path}/Library/Caches/Firefox/blob';
+    final arcCache =
+        '${home.path}/Library/Application Support/Arc'
+        '/Default/GPUCache/blob';
+
+    expect(result.recheckProcessGuards[chromeCache]?.exactNames, [
+      'Google Chrome',
+      'Google Chrome Helper',
+    ]);
+    expect(result.recheckProcessGuards[chromeCache]?.patterns, [
+      '/Google Chrome.app/',
+    ]);
+    expect(result.recheckProcessGuards[firefoxCache]?.exactNames, ['Firefox']);
+    expect(result.recheckProcessGuards.containsKey(arcCache), isFalse);
   });
 
   test('a missing home tree proposes nothing and does not throw', () async {

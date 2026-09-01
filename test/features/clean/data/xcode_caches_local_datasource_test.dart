@@ -6,6 +6,7 @@ import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
 import '../../../support/fake_process_runner.dart';
 
@@ -29,13 +30,18 @@ void main() {
   Future<void> makeDir(String relative) =>
       Directory('${home.path}/$relative').create(recursive: true);
 
-  Future<List<String>> targets(Map<String, ProcessResult> responses) async {
+  Future<CleanSectionTargets> enumerate(
+    Map<String, ProcessResult> responses,
+  ) async {
     final source = XcodeCachesLocalDataSource(
       home: home.path,
       guard: ProcessGuard(FakeProcessRunner(responses)),
     );
-    return (await source.enumerate()).paths;
+    return source.enumerate();
   }
+
+  Future<List<String>> targets(Map<String, ProcessResult> responses) async =>
+      (await enumerate(responses)).paths;
 
   const allClosed = {
     'pgrep -x Xcode': null,
@@ -106,4 +112,22 @@ void main() {
   test('a missing home tree does not throw', () async {
     expect(await targets(closed()), isEmpty);
   });
+
+  test(
+    'every proposed path carries a recheck of the same tooling processes',
+    () async {
+      await makeDir('Library/Caches/com.apple.dt.Xcode/blob');
+      await makeDir('Library/Developer/Xcode/Products/blob');
+      await makeDir('Library/Developer/Xcode/DerivedData/MyApp-abc123');
+
+      final result = await enumerate(closed());
+
+      for (final path in result.paths) {
+        expect(
+          result.recheckProcessGuards[path]?.exactNames,
+          allClosed.keys.map((key) => key.substring('pgrep -x '.length)),
+        );
+      }
+    },
+  );
 }
