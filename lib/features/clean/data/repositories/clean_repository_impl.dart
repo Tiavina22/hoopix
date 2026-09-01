@@ -4,6 +4,7 @@ import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
@@ -31,6 +32,7 @@ class CleanRepositoryImpl implements CleanRepository {
     required this.home,
     CleanSectionsLocalDataSource? sections,
     DeveloperToolsLocalDataSource? developerTools,
+    AppsAndUtilitiesLocalDataSource? appsAndUtilities,
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
     Trash trash = const Trash(),
@@ -46,6 +48,8 @@ class CleanRepositoryImpl implements CleanRepository {
            ),
        _developerTools =
            developerTools ?? DeveloperToolsLocalDataSource(home: home),
+       _appsAndUtilities =
+           appsAndUtilities ?? AppsAndUtilitiesLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -56,6 +60,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final String home;
   final CleanSectionsLocalDataSource _sections;
   final DeveloperToolsLocalDataSource _developerTools;
+  final AppsAndUtilitiesLocalDataSource _appsAndUtilities;
   final Trash _trash;
   final OperationLog _log;
   final SizeProbe _sizeProbe;
@@ -69,14 +74,19 @@ class CleanRepositoryImpl implements CleanRepository {
       userLines: _readWhitelist(home),
     );
 
-    final plan = BuildCleanPlan(
-      home: home,
-      whitelist: whitelist,
-      exists: (path) =>
-          FileSystemEntity.typeSync(path, followLinks: false) !=
-          FileSystemEntityType.notFound,
-      holdsModelCache: holdsCompiledModelCache,
-    )([..._sections.enumerate(), await _developerTools.enumerate()]);
+    final plan =
+        BuildCleanPlan(
+          home: home,
+          whitelist: whitelist,
+          exists: (path) =>
+              FileSystemEntity.typeSync(path, followLinks: false) !=
+              FileSystemEntityType.notFound,
+          holdsModelCache: holdsCompiledModelCache,
+        )([
+          ..._sections.enumerate(),
+          await _developerTools.enumerate(),
+          _appsAndUtilities.enumerate(),
+        ]);
 
     // Every row is named and grouped before any measuring, so the preview
     // is readable immediately.

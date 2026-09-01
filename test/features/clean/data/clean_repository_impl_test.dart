@@ -121,6 +121,19 @@ void main() {
     );
   });
 
+  test('the Apps & utilities section is merged into the plan', () async {
+    await Directory('${home.path}/.cacher/logs').create(recursive: true);
+    await File('${home.path}/.cacher/logs/run.log').create(recursive: true);
+
+    final repository = CleanRepositoryImpl(home: home.path);
+    final plan = await repository.watchPlan().first;
+
+    expect(
+      plan.candidates.map((c) => c.path),
+      contains('${home.path}/.cacher/logs/run.log'),
+    );
+  });
+
   test('an empty owner command is a refusal, not a silent no-op', () async {
     final repository = CleanRepositoryImpl(home: home.path);
     final candidate = CleanCandidate(
