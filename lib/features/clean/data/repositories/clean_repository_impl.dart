@@ -15,6 +15,11 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// same kind of time on a large one.
 const _sizeTimeout = Duration(seconds: 60);
 
+/// An owner command (`npm cache clean --force`, `go clean -modcache`) walks
+/// and rewrites a real cache tree, not a quick probe — bounded generously
+/// rather than on the same clock as a `du`.
+const _ownerCommandTimeout = Duration(minutes: 3);
+
 /// Where a user's own cleanup whitelist lives. Same shape and filename as
 /// Mole's, under hoopix's own directory, so the file is portable between
 /// the two.
@@ -28,6 +33,7 @@ class CleanRepositoryImpl implements CleanRepository {
     List<String>? Function(String home)? readWhitelist,
     Trash trash = const Trash(),
     OperationLog? log,
+    ProcessRunner? ownerCommandRunner,
   }) : _trash = trash,
        _log = log ?? OperationLog(home: home),
        _sections =
@@ -38,6 +44,9 @@ class CleanRepositoryImpl implements CleanRepository {
            ),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
+       _ownerCommandRunner =
+           ownerCommandRunner ??
+           const ProcessRunner(timeout: _ownerCommandTimeout),
        _readWhitelist = readWhitelist ?? _readWhitelistFile;
 
   final String home;
@@ -45,6 +54,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final Trash _trash;
   final OperationLog _log;
   final SizeProbe _sizeProbe;
+  final ProcessRunner _ownerCommandRunner;
   final List<String>? Function(String home) _readWhitelist;
 
   @override
@@ -70,11 +80,12 @@ class CleanRepositoryImpl implements CleanRepository {
     final eligible = plan.eligible;
     if (eligible.isEmpty) return;
 
-    var sizes = {for (final candidate in eligible) candidate.path: candidate.sizeBytes};
-    await for (final probe in SizeProbe.pool(
-      [for (final candidate in eligible) candidate.path],
-      _sizeProbe.sizeOf,
-    )) {
+    var sizes = {
+      for (final candidate in eligible) candidate.path: candidate.sizeBytes,
+    };
+    await for (final probe in SizeProbe.pool([
+      for (final candidate in eligible) candidate.path,
+    ], _sizeProbe.sizeOf)) {
       sizes = {...sizes, probe.key: probe.sizeBytes};
       yield CleanPlan(
         candidates: [
@@ -91,23 +102,55 @@ class CleanRepositoryImpl implements CleanRepository {
   Future<Map<String, String>> approve(List<CleanCandidate> approved) async {
     if (approved.isEmpty) return const {};
 
-    final failures = await _trash.moveToTrash(
-      [for (final candidate in approved) candidate.path],
-    );
+    final byTrash = [
+      for (final candidate in approved)
+        if (!candidate.isOwnerCommand) candidate,
+    ];
+    final byCommand = [
+      for (final candidate in approved)
+        if (candidate.isOwnerCommand) candidate,
+    ];
+
+    final failures = <String, String>{
+      ...await _trash.moveToTrash([
+        for (final candidate in byTrash) candidate.path,
+      ]),
+    };
+    // Sequential: these run real cache-clean commands, which can be I/O
+    // heavy, so overlapping several is worth avoiding rather than saving.
+    for (final candidate in byCommand) {
+      final failure = await _runOwnerCommand(candidate);
+      if (failure != null) failures[candidate.path] = failure;
+    }
 
     for (final candidate in approved) {
       final refusal = failures[candidate.path];
       _log.record(
         command: 'clean',
-        outcome: refusal == null
-            ? OperationOutcome.trashed
-            : OperationOutcome.refused,
+        outcome: refusal != null
+            ? OperationOutcome.refused
+            : candidate.isOwnerCommand
+            ? OperationOutcome.cleared
+            : OperationOutcome.trashed,
         targetPath: candidate.path,
         detail: refusal,
         sizeBytes: candidate.sizeBytes,
       );
     }
     return failures;
+  }
+
+  /// Runs [candidate]'s owner command. Returns null on success, or a failure
+  /// message — there is no native refusal channel for this the way Trash
+  /// has one, so the process's own exit code is the whole signal.
+  Future<String?> _runOwnerCommand(CleanCandidate candidate) async {
+    final command = candidate.ownerCommand;
+    if (command == null || command.isEmpty) return 'no command to run';
+    final result = await _ownerCommandRunner.run(
+      command.first,
+      command.skip(1).toList(),
+    );
+    return result.isSuccess ? null : '${result.failure}';
   }
 
   /// Null when the user has no whitelist file, which is what selects the

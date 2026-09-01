@@ -57,11 +57,13 @@ class _CleanScreenState extends State<CleanScreen> {
     final plan = _controller.plan;
     if (plan == null || plan.eligible.isEmpty) return;
 
+    final ownerCommandCount = plan.ownerCommandCount;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => _CleanConfirmationDialog(
         count: plan.eligible.length,
         sizeBytes: plan.reclaimableBytes,
+        ownerCommandCount: ownerCommandCount,
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -72,9 +74,11 @@ class _CleanScreenState extends State<CleanScreen> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          failures.isEmpty
-              ? l10n.cleanTrashed(plan.eligible.length)
-              : l10n.cleanTrashRefused(failures.length),
+          failures.isNotEmpty
+              ? l10n.cleanTrashRefused(failures.length)
+              : ownerCommandCount > 0
+              ? l10n.cleanCleared(plan.eligible.length)
+              : l10n.cleanTrashed(plan.eligible.length),
         ),
       ),
     );
@@ -125,14 +129,18 @@ class _Header extends StatelessWidget {
           children: [
             Text(
               l10n.sectionCleanLabel,
-              style: HoopixType.largeTitle.copyWith(color: palette.labelPrimary),
+              style: HoopixType.largeTitle.copyWith(
+                color: palette.labelPrimary,
+              ),
             ),
             const SizedBox(width: HoopixSpacing.md),
             if (plan != null && plan.eligible.isNotEmpty)
               Text(
                 '${l10n.cleanItemCount(plan.eligible.length)}'
                 ' · ${formatBytes(plan.reclaimableBytes)}',
-                style: HoopixType.callout.copyWith(color: palette.labelTertiary),
+                style: HoopixType.callout.copyWith(
+                  color: palette.labelTertiary,
+                ),
               ),
             const Spacer(),
             FilledButton(
@@ -146,7 +154,11 @@ class _Header extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
               ),
               child: Text(
-                controller.isRemoving ? l10n.cleanWorking : l10n.cleanMoveToTrash,
+                controller.isRemoving
+                    ? l10n.cleanWorking
+                    : (plan?.ownerCommandCount ?? 0) > 0
+                    ? l10n.cleanCleanUp
+                    : l10n.cleanMoveToTrash,
               ),
             ),
           ],
@@ -183,7 +195,10 @@ class _Body extends StatelessWidget {
         child: SizedBox(
           width: 20,
           height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: palette.brand),
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: palette.brand,
+          ),
         ),
       );
     }
@@ -223,7 +238,9 @@ class _SectionCard extends StatelessWidget {
       title: title,
       trailing: Text(
         formatBytes(total),
-        style: HoopixType.numericCaption.copyWith(color: palette.labelSecondary),
+        style: HoopixType.numericCaption.copyWith(
+          color: palette.labelSecondary,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +253,9 @@ class _SectionCard extends StatelessWidget {
               padding: const EdgeInsets.only(top: HoopixSpacing.sm),
               child: Text(
                 l10n.cleanAndMore(candidates.length - _shownPerSection),
-                style: HoopixType.caption.copyWith(color: palette.labelTertiary),
+                style: HoopixType.caption.copyWith(
+                  color: palette.labelTertiary,
+                ),
               ),
             ),
         ],
@@ -359,25 +378,43 @@ class _Notice extends StatelessWidget {
 /// Names how much is about to move and where it goes. "Move to Trash", not
 /// "Delete", because that is what happens — and it is why a mistaken
 /// confirmation is still recoverable.
+///
+/// When the batch includes owner-command candidates ([ownerCommandCount] >
+/// 0), that promise is only partly true, so the title, body and button all
+/// switch to mechanism-neutral copy that says plainly which items can be
+/// put back and which cannot.
 class _CleanConfirmationDialog extends StatelessWidget {
-  const _CleanConfirmationDialog({required this.count, required this.sizeBytes});
+  const _CleanConfirmationDialog({
+    required this.count,
+    required this.sizeBytes,
+    required this.ownerCommandCount,
+  });
 
   final int count;
   final int sizeBytes;
+  final int ownerCommandCount;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final l10n = AppLocalizations.of(context)!;
+    final mixed = ownerCommandCount > 0;
 
     return AlertDialog(
       backgroundColor: palette.surface,
       title: Text(
-        l10n.cleanConfirmTitle(count),
+        mixed
+            ? l10n.cleanConfirmTitleMixed(count)
+            : l10n.cleanConfirmTitle(count),
         style: HoopixType.title.copyWith(color: palette.labelPrimary),
       ),
       content: Text(
-        l10n.cleanConfirmBody(formatBytes(sizeBytes)),
+        mixed
+            ? l10n.cleanConfirmBodyMixed(
+                formatBytes(sizeBytes),
+                ownerCommandCount,
+              )
+            : l10n.cleanConfirmBody(formatBytes(sizeBytes)),
         style: HoopixType.body.copyWith(color: palette.labelSecondary),
       ),
       actions: [
@@ -389,7 +426,10 @@ class _CleanConfirmationDialog extends StatelessWidget {
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
           style: TextButton.styleFrom(foregroundColor: palette.danger),
-          child: Text(l10n.cleanMoveToTrash, style: HoopixType.body),
+          child: Text(
+            mixed ? l10n.cleanCleanUp : l10n.cleanMoveToTrash,
+            style: HoopixType.body,
+          ),
         ),
       ],
     );

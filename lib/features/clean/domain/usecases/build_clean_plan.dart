@@ -5,10 +5,20 @@ import 'package:hoopix/features/clean/domain/entities/path_protection.dart';
 
 /// One section's proposal: the paths it would like removed.
 class CleanSectionTargets {
-  const CleanSectionTargets(this.section, this.paths);
+  const CleanSectionTargets(
+    this.section,
+    this.paths, {
+    this.ownerCommands = const {},
+  });
 
   final String section;
   final List<String> paths;
+
+  /// path -> the command that reclaims it, for a proposal whose cleanup
+  /// mechanism is the owning tool's own cache-clean command (`npm cache
+  /// clean --force`, `go clean -modcache`, ...) rather than a Trash move of
+  /// the path itself. A path absent here is removed the ordinary way.
+  final Map<String, List<String>> ownerCommands;
 }
 
 /// Turns what the sections proposed into what will actually happen.
@@ -57,6 +67,7 @@ class BuildCleanPlan {
             path: path,
             section: section.section,
             skipReason: reason,
+            ownerCommand: section.ownerCommands[path],
           ),
         );
       }

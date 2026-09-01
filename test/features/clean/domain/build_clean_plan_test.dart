@@ -22,7 +22,9 @@ CleanCandidate candidateFor(CleanPlan plan, String path) =>
 void main() {
   test('an ordinary cache is eligible', () {
     final plan = builder()([
-      CleanSectionTargets('App caches', ['$_home/Library/Caches/com.example.app']),
+      CleanSectionTargets('App caches', [
+        '$_home/Library/Caches/com.example.app',
+      ]),
     ]);
 
     expect(plan.eligible.map((c) => c.path), [
@@ -43,7 +45,10 @@ void main() {
       '$_home/Library/Caches/com.example.app',
     ]);
     expect(
-      candidateFor(plan, '$_home/Library/Keychains/login.keychain-db').skipReason,
+      candidateFor(
+        plan,
+        '$_home/Library/Keychains/login.keychain-db',
+      ).skipReason,
       CleanSkipReason.protected,
     );
   });
@@ -104,16 +109,65 @@ void main() {
     expect(plan.candidates.single.section, 'App caches');
   });
 
-  test('protection is checked before the whitelist, so the reason is honest', () {
-    // Whitelisting something already protected must not relabel why it is
-    // being kept.
-    const path = '$_home/Library/Keychains/login.keychain-db';
-    final plan = builder(whitelistLines: [path])([
-      CleanSectionTargets('App caches', [path]),
+  test('an owner-command target carries its command onto the candidate', () {
+    const path = '$_home/.npm';
+    final plan = builder()([
+      CleanSectionTargets(
+        'Developer tools',
+        [path],
+        ownerCommands: {
+          path: ['npm', 'cache', 'clean', '--force'],
+        },
+      ),
     ]);
 
-    expect(candidateFor(plan, path).skipReason, CleanSkipReason.protected);
+    final candidate = candidateFor(plan, path);
+    expect(candidate.isOwnerCommand, isTrue);
+    expect(candidate.ownerCommand, ['npm', 'cache', 'clean', '--force']);
   });
+
+  test('a target without an owner command is an ordinary Trash removal', () {
+    const path = '$_home/Library/Caches/plain';
+    final plan = builder()([
+      CleanSectionTargets('Developer tools', [path]),
+    ]);
+
+    expect(candidateFor(plan, path).isOwnerCommand, isFalse);
+  });
+
+  test(
+    'an owner-command target that is protected is still kept, and still tagged',
+    () {
+      const path = '$_home/Library/Keychains/login.keychain-db';
+      final plan = builder()([
+        CleanSectionTargets(
+          'Developer tools',
+          [path],
+          ownerCommands: {
+            path: ['some-tool', 'clean'],
+          },
+        ),
+      ]);
+
+      final candidate = candidateFor(plan, path);
+      expect(candidate.skipReason, CleanSkipReason.protected);
+      expect(candidate.isOwnerCommand, isTrue);
+    },
+  );
+
+  test(
+    'protection is checked before the whitelist, so the reason is honest',
+    () {
+      // Whitelisting something already protected must not relabel why it is
+      // being kept.
+      const path = '$_home/Library/Keychains/login.keychain-db';
+      final plan = builder(whitelistLines: [path])([
+        CleanSectionTargets('App caches', [path]),
+      ]);
+
+      expect(candidateFor(plan, path).skipReason, CleanSkipReason.protected);
+    },
+  );
 
   group('the plan itself', () {
     test('totals only what it would actually remove', () {
@@ -135,6 +189,27 @@ void main() {
       expect(plan.reclaimableBytes, 150);
       expect(plan.eligible, hasLength(3));
       expect(plan.skippedFor(CleanSkipReason.protected), 1);
+    });
+
+    test('counts eligible owner-command candidates, not skipped ones', () {
+      const plan = CleanPlan(
+        candidates: [
+          CleanCandidate(path: '/a', section: 'S'),
+          CleanCandidate(
+            path: '/b',
+            section: 'S',
+            ownerCommand: ['tool', 'clean'],
+          ),
+          CleanCandidate(
+            path: '/c',
+            section: 'S',
+            ownerCommand: ['tool', 'clean'],
+            skipReason: CleanSkipReason.protected,
+          ),
+        ],
+      );
+
+      expect(plan.ownerCommandCount, 1);
     });
 
     test('groups by section in the order the run would work', () {

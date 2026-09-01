@@ -19,6 +19,7 @@ class CleanCandidate {
     required this.section,
     this.sizeBytes,
     this.skipReason,
+    this.ownerCommand,
   });
 
   final String path;
@@ -27,19 +28,31 @@ class CleanCandidate {
   /// space is going.
   final String section;
 
-  /// Null while unmeasured, or when the size could not be read.
+  /// Null while unmeasured, or when the size could not be read. For an
+  /// owner-command candidate this is an estimate — how much [path] holds
+  /// today — not a guarantee of what the command frees.
   final int? sizeBytes;
 
   /// Null when the path is eligible for removal.
   final CleanSkipReason? skipReason;
 
+  /// When set, approving this candidate runs this command instead of moving
+  /// [path] to Trash — some tools (npm, Go, ...) only reclaim their cache
+  /// correctly through their own cache-clean command, not a raw directory
+  /// move. [path] is still what protection, whitelist and sizing run
+  /// against: the root the command reclaims. Not recoverable the way a
+  /// Trash move is.
+  final List<String>? ownerCommand;
+
   bool get isEligible => skipReason == null;
+  bool get isOwnerCommand => ownerCommand != null;
 
   CleanCandidate withSize(int? sizeBytes) => CleanCandidate(
     path: path,
     section: section,
     sizeBytes: sizeBytes,
     skipReason: skipReason,
+    ownerCommand: ownerCommand,
   );
 }
 
@@ -53,11 +66,15 @@ class CleanPlan {
 
   final List<CleanCandidate> candidates;
 
-  List<CleanCandidate> get eligible =>
-      [for (final c in candidates) if (c.isEligible) c];
+  List<CleanCandidate> get eligible => [
+    for (final c in candidates)
+      if (c.isEligible) c,
+  ];
 
-  List<CleanCandidate> get skipped =>
-      [for (final c in candidates) if (!c.isEligible) c];
+  List<CleanCandidate> get skipped => [
+    for (final c in candidates)
+      if (!c.isEligible) c,
+  ];
 
   /// What removing everything eligible would reclaim. Unmeasured paths
   /// contribute nothing rather than a guess.
@@ -76,4 +93,9 @@ class CleanPlan {
 
   int skippedFor(CleanSkipReason reason) =>
       skipped.where((c) => c.skipReason == reason).length;
+
+  /// How many eligible candidates clear by running an owner command rather
+  /// than moving to Trash — the confirmation copy must not promise every
+  /// approved item can be put back when this is above zero.
+  int get ownerCommandCount => eligible.where((c) => c.isOwnerCommand).length;
 }

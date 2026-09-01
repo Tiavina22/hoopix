@@ -2,7 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 /// What happened to one path during a run.
-enum OperationOutcome { trashed, refused, skipped }
+///
+/// [cleared] is distinct from [trashed]: it means the path was reclaimed by
+/// running its owning tool's own cache-clean command rather than a Trash
+/// move, so — unlike [trashed] — it cannot be put back.
+enum OperationOutcome { trashed, refused, skipped, cleared }
 
 /// An append-only record of everything a destructive command did, and
 /// everything it decided not to do.
@@ -31,14 +35,7 @@ class OperationLog {
       final file = File(path);
       file.parent.createSync(recursive: true);
       file.writeAsStringSync(
-        '${jsonEncode({
-          'at': DateTime.now().toIso8601String(),
-          'command': command,
-          'outcome': outcome.name,
-          'path': targetPath,
-          'detail': ?detail,
-          'sizeBytes': ?sizeBytes,
-        })}\n',
+        '${jsonEncode({'at': DateTime.now().toIso8601String(), 'command': command, 'outcome': outcome.name, 'path': targetPath, 'detail': ?detail, 'sizeBytes': ?sizeBytes})}\n',
         mode: FileMode.append,
       );
     } on Object {
