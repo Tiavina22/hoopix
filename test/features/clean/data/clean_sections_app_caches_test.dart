@@ -34,6 +34,90 @@ void main() {
           .paths;
 
   test(
+    'reaches the curated Apple system caches that userEssentials must keep, not clean',
+    () async {
+      await makeDir('Library/Caches/com.apple.photoanalysisd');
+      await makeDir('Library/Caches/com.apple.akd');
+      await makeDir('Library/Caches/com.apple.QuickLook.thumbnailcache');
+      await makeDir('Library/Caches/com.apple.iconservices');
+      await makeDir('Library/Caches/com.apple.iconservices.store');
+      await makeDir('Library/Caches/com.apple.WebKit.Networking/blob');
+      await makeDir('Library/Caches/com.apple.helpd/blob');
+      await makeDir('Library/Caches/com.apple.AppleMediaServices/blob');
+      await makeDir('Library/Caches/com.apple.duetexpertd/blob');
+      await makeDir('Library/Caches/com.apple.parsecd/blob');
+      await makeDir('Library/Caches/com.apple.python/blob');
+
+      final targets = appCacheTargets();
+
+      // Whole-directory targets: each is proposed itself, not reached
+      // through a child, since userEssentials could never propose them —
+      // they are blanket-protected as top-level Caches children.
+      expect(
+        targets,
+        contains('${home.path}/Library/Caches/com.apple.photoanalysisd'),
+      );
+      expect(targets, contains('${home.path}/Library/Caches/com.apple.akd'));
+      expect(
+        targets,
+        contains(
+          '${home.path}/Library/Caches/com.apple.QuickLook.thumbnailcache',
+        ),
+      );
+      expect(
+        targets,
+        contains('${home.path}/Library/Caches/com.apple.iconservices'),
+      );
+      expect(
+        targets,
+        contains('${home.path}/Library/Caches/com.apple.iconservices.store'),
+      );
+      expect(
+        targets,
+        contains(
+          '${home.path}/Library/Caches/com.apple.WebKit.Networking/blob',
+        ),
+      );
+      expect(
+        targets,
+        contains('${home.path}/Library/Caches/com.apple.helpd/blob'),
+      );
+      expect(
+        targets,
+        contains(
+          '${home.path}/Library/Caches/com.apple.AppleMediaServices/blob',
+        ),
+      );
+      expect(
+        targets,
+        contains('${home.path}/Library/Caches/com.apple.duetexpertd/blob'),
+      );
+      expect(
+        targets,
+        contains('${home.path}/Library/Caches/com.apple.parsecd/blob'),
+      );
+      expect(
+        targets,
+        contains('${home.path}/Library/Caches/com.apple.python/blob'),
+      );
+    },
+  );
+
+  test(
+    'does not repeat a top-level Caches child that userEssentials already sweeps whole',
+    () async {
+      // GeoServices is not blanket-protected, so proposing it here too
+      // would double-count its size across two sections.
+      await makeDir('Library/Caches/GeoServices/blob');
+
+      expect(
+        appCacheTargets(),
+        isNot(contains('${home.path}/Library/Caches/GeoServices/blob')),
+      );
+    },
+  );
+
+  test(
     'sweeps saved application state, diagnostic reports, identity caches and suggestions',
     () async {
       await makeDir('Library/Saved Application State/com.example.savedState');

@@ -152,23 +152,35 @@ void main() {
   });
 
   test(
-    'never proposes the top-level browser cache directories already swept elsewhere',
+    'skips a browser whose own top-level cache directory is already swept whole elsewhere',
     () async {
+      // Google (unlike com.apple.* or com.microsoft.*) is not blanket-protected,
+      // so User essentials' whole-directory sweep already reaches it.
       await makeDir('Library/Caches/Google/Chrome/blob');
-      await makeDir('Library/Caches/com.apple.Safari/blob');
-
-      final targets = browserTargets();
 
       expect(
-        targets,
+        browserTargets(),
         isNot(contains('${home.path}/Library/Caches/Google/Chrome/blob')),
-      );
-      expect(
-        targets,
-        isNot(contains('${home.path}/Library/Caches/com.apple.Safari/blob')),
       );
     },
   );
+
+  test('reaches Safari and Edge through their children, since their top-level '
+      'directory is always kept rather than cleaned', () async {
+    await makeDir('Library/Caches/com.apple.Safari/blob');
+    await makeDir('Library/Caches/com.microsoft.edgemac/blob');
+
+    final targets = browserTargets();
+
+    expect(
+      targets,
+      contains('${home.path}/Library/Caches/com.apple.Safari/blob'),
+    );
+    expect(
+      targets,
+      contains('${home.path}/Library/Caches/com.microsoft.edgemac/blob'),
+    );
+  });
 
   test('a missing home tree does not throw', () {
     expect(browserTargets, returnsNormally);

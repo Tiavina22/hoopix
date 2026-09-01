@@ -74,18 +74,35 @@ class CleanSectionsLocalDataSource {
     return targets;
   }
 
-  /// Everything Mole's `clean_app_caches` proposes that is not already
-  /// covered by the blanket `~/Library/Caches/*` sweep in [userEssentials].
-  /// Several of its named targets (`com.apple.helpd`, `GeoServices`,
-  /// `com.apple.iconservices*`, ...) live directly under `Library/Caches`
-  /// and are top-level children that sweep already proposes; repeating them
-  /// here would only be relabeled duplicates the funnel collapses anyway.
+  /// Everything Mole's `clean_app_caches` proposes.
+  ///
+  /// A named target under `Library/Caches` is repeated here only when the
+  /// top-level sweep in [userEssentials] cannot actually reach it: any
+  /// `com.apple.*` (or otherwise vendor-protected) top-level Caches child is
+  /// always kept, not cleaned, by [shouldProtectPath]'s blanket bundle-id
+  /// rule — the whole point of this curated allowlist is the set of
+  /// specific children known safe to reach around that block. A target that
+  /// blanket rule does *not* cover (`GeoServices`, `Quick Look`, ...) is
+  /// left out here on purpose: [userEssentials] already proposes it whole,
+  /// and repeating it would double-count its size across two sections.
   ///
   /// Not ported: `_clean_incomplete_downloads` needs an open-file-handle
   /// probe hoopix does not have yet, so an in-progress Safari/Chrome
   /// download is not a safe target here.
   List<String> _appCachesTargets() {
     final targets = <String>[];
+
+    targets.add('$home/Library/Caches/com.apple.photoanalysisd');
+    targets.add('$home/Library/Caches/com.apple.akd');
+    targets.add('$home/Library/Caches/com.apple.QuickLook.thumbnailcache');
+    for (final child in _childrenOf('$home/Library/Caches')) {
+      if (child.split('/').last.startsWith('com.apple.iconservices')) {
+        targets.add(child);
+      }
+    }
+    targets.addAll(
+      _childrenOf('$home/Library/Caches/com.apple.WebKit.Networking'),
+    );
 
     targets.addAll(_childrenOf('$home/Library/Saved Application State'));
     targets.addAll(_childrenOf('$home/Library/DiagnosticReports'));
@@ -99,6 +116,13 @@ class CleanSectionsLocalDataSource {
     }
 
     targets.addAll(_supportAppDataTargets());
+    targets.addAll(_childrenOf('$home/Library/Caches/com.apple.helpd'));
+    targets.addAll(
+      _childrenOf('$home/Library/Caches/com.apple.AppleMediaServices'),
+    );
+    targets.addAll(_childrenOf('$home/Library/Caches/com.apple.duetexpertd'));
+    targets.addAll(_childrenOf('$home/Library/Caches/com.apple.parsecd'));
+    targets.addAll(_childrenOf('$home/Library/Caches/com.apple.python'));
     targets.addAll(_sandboxedAppleCacheTargets());
     targets.addAll(_containerCacheSweepTargets());
     targets.addAll(_groupContainerCacheSweepTargets());
@@ -259,12 +283,18 @@ class CleanSectionsLocalDataSource {
     return targets..sort();
   }
 
-  /// Everything Mole's `clean_browsers` proposes that is neither already
-  /// covered by the blanket `~/Library/Caches/*` sweep in [userEssentials]
-  /// (Safari, Chrome, Chromium, Edge, Arc, Dia, Brave, Yandex, Firefox,
-  /// Opera, Vivaldi, Comet, Orion, Zen and QQ Browser all keep their own
-  /// top-level cache directly under `Library/Caches`) nor gated on the
-  /// browser not currently running.
+  /// Everything Mole's `clean_browsers` proposes that is neither gated on
+  /// the browser not currently running, nor genuinely redundant with the
+  /// blanket `~/Library/Caches/*` sweep in [userEssentials].
+  ///
+  /// That sweep reaches a browser's own top-level cache directory (Chrome,
+  /// Chromium, Arc, Dia, Brave, Yandex, Helium, Opera, Vivaldi, Comet,
+  /// Orion, Zen, QQ Browser) whole, so repeating it here would only
+  /// double-count its size. Safari and Edge are the exceptions: their
+  /// bundle ids (`com.apple.Safari`, `com.microsoft.edgemac`) trip
+  /// [shouldProtectPath]'s blanket vendor rule as top-level Caches
+  /// children, so [userEssentials] always keeps rather than cleans them —
+  /// their children are reached here instead, exactly as Mole does.
   ///
   /// Not ported: every profile-level Code Cache / GPUCache / DawnCache /
   /// ShaderCache / Crashpad / component_crx_cache row, and Firefox's cache
@@ -274,6 +304,8 @@ class CleanSectionsLocalDataSource {
   /// siblings) — version-comparison logic with its own evidence chain,
   /// deliberately left for a focused pass of its own.
   List<String> _browsersTargets() => [
+    ..._childrenOf('$home/Library/Caches/com.apple.Safari'),
+    ..._childrenOf('$home/Library/Caches/com.microsoft.edgemac'),
     ..._childrenOf('$home/.cache/puppeteer'),
     ..._serviceWorkerCacheTargets(),
   ];
