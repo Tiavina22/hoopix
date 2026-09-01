@@ -34,11 +34,13 @@ class CleanSectionsLocalDataSource {
     CleanSectionTargets(userEssentials, _userEssentialsTargets()),
     CleanSectionTargets(appCaches, _appCachesTargets()),
     CleanSectionTargets(browsers, _browsersTargets()),
+    CleanSectionTargets(cloudAndOffice, _cloudAndOfficeTargets()),
   ];
 
   static const userEssentials = 'User essentials';
   static const appCaches = 'App caches';
   static const browsers = 'Browsers';
+  static const cloudAndOffice = 'Cloud & Office';
 
   List<String> _userEssentialsTargets() {
     final targets = <String>[];
@@ -381,6 +383,45 @@ class CleanSectionsLocalDataSource {
     'linear.app',
     'excalidraw.com',
   ];
+
+  /// Port of the guard-free slice of `clean_cloud_storage` plus all of
+  /// `clean_office_applications`.
+  ///
+  /// Dropbox, Google Drive and OneDrive are gated on the sync client not
+  /// currently running in Mole; hoopix has no process-liveness check yet,
+  /// so all three are left out. Baidu Netdisk and Alibaba Cloud are left
+  /// out too, but for the opposite reason: verified not blanket-protected,
+  /// so [userEssentials] already sweeps their top-level Caches directory
+  /// whole. Box, and every Office/Mail/Thunderbird target below, *are*
+  /// blanket-protected as `com.apple.*` / `com.microsoft.*` / vendor
+  /// bundle ids — [userEssentials] can only ever keep them, never clean
+  /// them, so they are reached here instead, exactly as Mole does.
+  List<String> _cloudAndOfficeTargets() {
+    final targets = <String>[
+      '$home/Library/Caches/com.box.desktop',
+      '$home/Library/Caches/com.microsoft.Word',
+      '$home/Library/Caches/com.microsoft.Excel',
+      '$home/Library/Caches/com.microsoft.Powerpoint',
+    ];
+
+    for (final app in ['Word', 'Excel']) {
+      final container = '$home/Library/Containers/com.microsoft.$app/Data';
+      targets.addAll(_childrenOf('$container/Library/Caches'));
+      targets.addAll(_childrenOf('$container/tmp'));
+      targets.addAll(_childrenOf('$container/Library/Logs'));
+    }
+
+    targets.addAll(_childrenOf('$home/Library/Caches/com.microsoft.Outlook'));
+    for (final child in _childrenOf('$home/Library/Caches')) {
+      if (child.split('/').last.startsWith('com.apple.iWork.')) {
+        targets.add(child);
+      }
+    }
+    targets.addAll(_childrenOf('$home/Library/Caches/org.mozilla.thunderbird'));
+    targets.addAll(_childrenOf('$home/Library/Caches/com.apple.mail'));
+
+    return targets;
+  }
 
   /// Immediate children of [path], or nothing when it cannot be listed.
   /// Symlinks are listed but never followed, so a link cannot redirect the
