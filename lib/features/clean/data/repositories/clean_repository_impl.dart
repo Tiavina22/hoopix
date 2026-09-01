@@ -4,6 +4,7 @@ import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/clean/data/datasources/app_leftovers_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
@@ -33,6 +34,7 @@ class CleanRepositoryImpl implements CleanRepository {
     CleanSectionsLocalDataSource? sections,
     DeveloperToolsLocalDataSource? developerTools,
     AppsAndUtilitiesLocalDataSource? appsAndUtilities,
+    AppLeftoversLocalDataSource? appLeftovers,
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
     Trash trash = const Trash(),
@@ -50,6 +52,7 @@ class CleanRepositoryImpl implements CleanRepository {
            developerTools ?? DeveloperToolsLocalDataSource(home: home),
        _appsAndUtilities =
            appsAndUtilities ?? AppsAndUtilitiesLocalDataSource(home: home),
+       _appLeftovers = appLeftovers ?? AppLeftoversLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -61,6 +64,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final CleanSectionsLocalDataSource _sections;
   final DeveloperToolsLocalDataSource _developerTools;
   final AppsAndUtilitiesLocalDataSource _appsAndUtilities;
+  final AppLeftoversLocalDataSource _appLeftovers;
   final Trash _trash;
   final OperationLog _log;
   final SizeProbe _sizeProbe;
@@ -86,6 +90,7 @@ class CleanRepositoryImpl implements CleanRepository {
           ..._sections.enumerate(),
           await _developerTools.enumerate(),
           _appsAndUtilities.enumerate(),
+          await _appLeftovers.enumerate(),
         ]);
 
     // Every row is named and grouped before any measuring, so the preview
