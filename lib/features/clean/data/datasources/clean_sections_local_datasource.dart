@@ -35,12 +35,14 @@ class CleanSectionsLocalDataSource {
     CleanSectionTargets(appCaches, _appCachesTargets()),
     CleanSectionTargets(browsers, _browsersTargets()),
     CleanSectionTargets(cloudAndOffice, _cloudAndOfficeTargets()),
+    CleanSectionTargets(virtualization, _virtualizationTargets()),
   ];
 
   static const userEssentials = 'User essentials';
   static const appCaches = 'App caches';
   static const browsers = 'Browsers';
   static const cloudAndOffice = 'Cloud & Office';
+  static const virtualization = 'Virtualization';
 
   List<String> _userEssentialsTargets() {
     final targets = <String>[];
@@ -422,6 +424,26 @@ class CleanSectionsLocalDataSource {
 
     return targets;
   }
+
+  /// Port of the guard-free slice of `clean_virtualization_tools`.
+  ///
+  /// VMware Fusion's bundle id is blanket-protected as a top-level Caches
+  /// directory (`com.vmware.*`), so it is repeated here; Parallels
+  /// (`com.parallels.*`) and Lima are not, so [userEssentials] already
+  /// sweeps them whole and repeating them here would double-count their
+  /// size.
+  ///
+  /// Not ported: UTM is gated on the app not currently running in Mole,
+  /// which hoopix has no process-liveness check for yet. Tart additionally
+  /// reclaims its cache by running `tart prune`, not a Trash move — the
+  /// same owner-command mechanism Developer tools uses — but that command
+  /// is itself process-guarded against a live `tart` invocation, so it
+  /// stays out for the same reason as UTM.
+  List<String> _virtualizationTargets() => [
+    '$home/Library/Caches/com.vmware.fusion',
+    '$home/VirtualBox VMs/.cache',
+    ..._childrenOf('$home/.vagrant.d/tmp'),
+  ];
 
   /// Immediate children of [path], or nothing when it cannot be listed.
   /// Symlinks are listed but never followed, so a link cannot redirect the
