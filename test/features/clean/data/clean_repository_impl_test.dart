@@ -107,6 +107,20 @@ void main() {
     },
   );
 
+  test('the Developer tools section is merged into the plan', () async {
+    await Directory(
+      '${home.path}/.yarn/cache/some-package',
+    ).create(recursive: true);
+
+    final repository = CleanRepositoryImpl(home: home.path);
+    final plan = await repository.watchPlan().first;
+
+    expect(
+      plan.candidates.map((c) => c.path),
+      contains('${home.path}/.yarn/cache/some-package'),
+    );
+  });
+
   test('an empty owner command is a refusal, not a silent no-op', () async {
     final repository = CleanRepositoryImpl(home: home.path);
     final candidate = CleanCandidate(
