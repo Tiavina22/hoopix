@@ -7,7 +7,12 @@ enum ProcessFailureKind { notFound, timedOut, nonZeroExit }
 /// A typed reason an external process call did not produce output, so
 /// datasources can degrade gracefully instead of throwing raw exceptions.
 class ProcessFailure {
-  const ProcessFailure._(this.executable, this.kind, this.reason);
+  const ProcessFailure._(
+    this.executable,
+    this.kind,
+    this.reason, {
+    this.exitCode,
+  });
 
   factory ProcessFailure.notFound(String executable, String detail) =>
       ProcessFailure._(
@@ -31,11 +36,17 @@ class ProcessFailure {
     executable,
     ProcessFailureKind.nonZeroExit,
     'exited $exitCode: ${stderr.trim()}',
+    exitCode: exitCode,
   );
 
   final String executable;
   final ProcessFailureKind kind;
   final String reason;
+
+  /// Only set for [ProcessFailureKind.nonZeroExit] — the process's own exit
+  /// code, for a caller that must branch on the exact value (`pgrep`'s 1
+  /// means "confirmed no match", not an error) rather than parse [reason].
+  final int? exitCode;
 
   @override
   String toString() => '$executable $reason';
