@@ -12,6 +12,7 @@ import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_lo
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
@@ -48,6 +49,7 @@ class CleanRepositoryImpl implements CleanRepository {
     CloudStorageLocalDataSource? cloudStorage,
     UtmCachesLocalDataSource? utmCaches,
     TartCacheLocalDataSource? tartCache,
+    FinalCutProGeneratedCachesLocalDataSource? finalCutProGeneratedCaches,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -78,6 +80,9 @@ class CleanRepositoryImpl implements CleanRepository {
        _cloudStorage = cloudStorage ?? CloudStorageLocalDataSource(home: home),
        _utmCaches = utmCaches ?? UtmCachesLocalDataSource(home: home),
        _tartCache = tartCache ?? TartCacheLocalDataSource(home: home),
+       _finalCutProGeneratedCaches =
+           finalCutProGeneratedCaches ??
+           FinalCutProGeneratedCachesLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -98,6 +103,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final CloudStorageLocalDataSource _cloudStorage;
   final UtmCachesLocalDataSource _utmCaches;
   final TartCacheLocalDataSource _tartCache;
+  final FinalCutProGeneratedCachesLocalDataSource _finalCutProGeneratedCaches;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -132,6 +138,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _cloudStorage.enumerate(),
           await _utmCaches.enumerate(),
           await _tartCache.enumerate(),
+          await _finalCutProGeneratedCaches.enumerate(),
           _system.enumerate(),
         ]);
 

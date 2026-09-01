@@ -8,6 +8,7 @@ import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
@@ -491,6 +492,38 @@ void main() {
     expect(failures, isEmpty);
     final entries = readLog();
     expect(entries.single['outcome'], 'cleared');
+  });
+
+  test('the Apps & utilities section is merged with Final Cut Pro generated '
+      'caches intact', () async {
+    await Directory(
+      '${home.path}/Movies/MyLibrary.fcpbundle/Event 1/Render Files'
+      '/High Quality Media',
+    ).create(recursive: true);
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      finalCutProGeneratedCaches: FinalCutProGeneratedCachesLocalDataSource(
+        home: home.path,
+        guard: ProcessGuard(
+          FakeProcessRunner({
+            'pgrep -x Final Cut Pro': ProcessResult.failure(
+              ProcessFailure.nonZeroExit('pgrep', 1, ''),
+            ),
+            'pgrep -f /Final Cut Pro.app/': ProcessResult.failure(
+              ProcessFailure.nonZeroExit('pgrep', 1, ''),
+            ),
+          }),
+        ),
+      ),
+    );
+    final plan = await repository.watchPlan().first;
+
+    final target =
+        '${home.path}/Movies/MyLibrary.fcpbundle/Event 1/Render Files'
+        '/High Quality Media';
+    final candidate = plan.candidates.singleWhere((c) => c.path == target);
+    expect(candidate.recheckProcessGuard?.exactNames, ['Final Cut Pro']);
   });
 
   test(

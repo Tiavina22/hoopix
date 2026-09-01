@@ -24,10 +24,13 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 ///
 /// Not ported: `clean_translation_apps` proposes only unprotected,
 /// already-redundant top-level Caches targets, so it contributes nothing
-/// and is omitted entirely. Final Cut Pro / JianyingPro generated caches,
-/// Autodesk (including old Fusion bundles), and Xcode/Simulator tooling
-/// are process-guarded in Mole; hoopix has no process-liveness check yet.
-/// Chrome/Edge/Brave-style old-version pruning does not apply here.
+/// and is omitted entirely. Autodesk (including old Fusion bundles) and
+/// Simulator caches (which need an `xcrun simctl` liveness check this
+/// codebase does not have) are process-guarded in Mole and still not
+/// ported. Final Cut Pro generated caches now are, in
+/// [FinalCutProGeneratedCachesLocalDataSource]; Xcode tooling is too, in
+/// `XcodeCachesLocalDataSource`. Chrome/Edge/Brave-style old-version
+/// pruning does not apply here.
 class AppsAndUtilitiesLocalDataSource {
   AppsAndUtilitiesLocalDataSource({
     required this.home,
