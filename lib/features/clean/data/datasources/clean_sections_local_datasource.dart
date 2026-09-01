@@ -33,10 +33,12 @@ class CleanSectionsLocalDataSource {
   List<CleanSectionTargets> enumerate() => [
     CleanSectionTargets(userEssentials, _userEssentialsTargets()),
     CleanSectionTargets(appCaches, _appCachesTargets()),
+    CleanSectionTargets(browsers, _browsersTargets()),
   ];
 
   static const userEssentials = 'User essentials';
   static const appCaches = 'App caches';
+  static const browsers = 'Browsers';
 
   List<String> _userEssentialsTargets() {
     final targets = <String>[];
@@ -256,6 +258,97 @@ class CleanSectionsLocalDataSource {
     walk(root, 1);
     return targets..sort();
   }
+
+  /// Everything Mole's `clean_browsers` proposes that is neither already
+  /// covered by the blanket `~/Library/Caches/*` sweep in [userEssentials]
+  /// (Safari, Chrome, Chromium, Edge, Arc, Dia, Brave, Yandex, Firefox,
+  /// Opera, Vivaldi, Comet, Orion, Zen and QQ Browser all keep their own
+  /// top-level cache directly under `Library/Caches`) nor gated on the
+  /// browser not currently running.
+  ///
+  /// Not ported: every profile-level Code Cache / GPUCache / DawnCache /
+  /// ShaderCache / Crashpad / component_crx_cache row, and Firefox's cache
+  /// entirely — Mole only touches these while the owning browser is closed,
+  /// and hoopix has no process-liveness check yet. Also not ported: the
+  /// Chrome/Edge/Brave old-version pruners (`clean_chrome_old_versions` and
+  /// siblings) — version-comparison logic with its own evidence chain,
+  /// deliberately left for a focused pass of its own.
+  List<String> _browsersTargets() => [
+    ..._childrenOf('$home/.cache/puppeteer'),
+    ..._serviceWorkerCacheTargets(),
+  ];
+
+  /// Port of the unguarded `clean_service_worker_cache` calls in
+  /// `clean_browsers`: Service Worker cache storage is origin-keyed and safe
+  /// to clean live, unlike the disk-backed caches above. A directory whose
+  /// name looks like one of [_protectedServiceWorkerDomains] is left alone
+  /// so an offline-capable PWA does not lose its registered worker.
+  List<String> _serviceWorkerCacheTargets() {
+    const profileRoots = [
+      'Application Support/Google/Chrome',
+      'Application Support/Arc',
+      'Application Support/Arc/User Data',
+      'Application Support/Dia/User Data',
+      'Application Support/BraveSoftware/Brave-Browser',
+      'Application Support/Vivaldi',
+    ];
+    final targets = <String>[];
+    for (final root in profileRoots) {
+      for (final profile in _realDirectoriesOf('$home/Library/$root')) {
+        targets.addAll(
+          _serviceWorkerCandidatesUnder('$profile/Service Worker/CacheStorage'),
+        );
+      }
+    }
+    return targets;
+  }
+
+  /// Directories exactly two levels below [cacheStorageDir]. Port of
+  /// `find "$cache_path" -type d -depth 2`.
+  List<String> _serviceWorkerCandidatesUnder(String cacheStorageDir) {
+    if (!_isRealDirectory(cacheStorageDir)) return const [];
+    final targets = <String>[];
+    for (final level1 in _realDirectoriesOf(cacheStorageDir)) {
+      for (final level2 in _realDirectoriesOf(level1)) {
+        final domain = _domainLikeSegment
+            .firstMatch(level2.split('/').last)
+            ?.group(0);
+        final protected =
+            domain != null &&
+            _protectedServiceWorkerDomains.any(domain.contains);
+        if (!protected) targets.add(level2);
+      }
+    }
+    return targets;
+  }
+
+  static final _domainLikeSegment = RegExp(
+    r'[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}',
+  );
+
+  /// Port of `PROTECTED_SW_DOMAINS` in `bin/clean.sh`: web editors, Google
+  /// Workspace, code platforms and collaboration tools whose offline/PWA
+  /// mode depends on a registered service worker.
+  static const _protectedServiceWorkerDomains = [
+    'capcut.com',
+    'photopea.com',
+    'pixlr.com',
+    'docs.google.com',
+    'sheets.google.com',
+    'slides.google.com',
+    'drive.google.com',
+    'mail.google.com',
+    'github.com',
+    'gitlab.com',
+    'codepen.io',
+    'codesandbox.io',
+    'replit.com',
+    'stackblitz.com',
+    'notion.so',
+    'figma.com',
+    'linear.app',
+    'excalidraw.com',
+  ];
 
   /// Immediate children of [path], or nothing when it cannot be listed.
   /// Symlinks are listed but never followed, so a link cannot redirect the
