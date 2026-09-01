@@ -4,6 +4,7 @@ import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/privileged_delete.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
+import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/app_leftovers_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
@@ -12,6 +13,7 @@ import 'package:hoopix/features/clean/data/datasources/clean_sections_local_data
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
@@ -45,6 +47,7 @@ class CleanRepositoryImpl implements CleanRepository {
     XcodeCachesLocalDataSource? xcodeCaches,
     CloudStorageLocalDataSource? cloudStorage,
     UtmCachesLocalDataSource? utmCaches,
+    TartCacheLocalDataSource? tartCache,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -52,6 +55,7 @@ class CleanRepositoryImpl implements CleanRepository {
     PrivilegedDelete privilegedDelete = const PrivilegedDelete(),
     OperationLog? log,
     ProcessRunner? ownerCommandRunner,
+    ProcessGuard? ownerCommandRecheckGuard,
   }) : _trash = trash,
        _privilegedDelete = privilegedDelete,
        _system = system,
@@ -73,11 +77,15 @@ class CleanRepositoryImpl implements CleanRepository {
        _xcodeCaches = xcodeCaches ?? XcodeCachesLocalDataSource(home: home),
        _cloudStorage = cloudStorage ?? CloudStorageLocalDataSource(home: home),
        _utmCaches = utmCaches ?? UtmCachesLocalDataSource(home: home),
+       _tartCache = tartCache ?? TartCacheLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
            ownerCommandRunner ??
            const ProcessRunner(timeout: _ownerCommandTimeout),
+       _ownerCommandRecheckGuard =
+           ownerCommandRecheckGuard ??
+           const ProcessGuard(ProcessRunner(timeout: Duration(seconds: 5))),
        _readWhitelist = readWhitelist ?? _readWhitelistFile;
 
   final String home;
@@ -89,12 +97,14 @@ class CleanRepositoryImpl implements CleanRepository {
   final XcodeCachesLocalDataSource _xcodeCaches;
   final CloudStorageLocalDataSource _cloudStorage;
   final UtmCachesLocalDataSource _utmCaches;
+  final TartCacheLocalDataSource _tartCache;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
   final OperationLog _log;
   final SizeProbe _sizeProbe;
   final ProcessRunner _ownerCommandRunner;
+  final ProcessGuard _ownerCommandRecheckGuard;
   final List<String>? Function(String home) _readWhitelist;
 
   @override
@@ -121,6 +131,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _xcodeCaches.enumerate(),
           await _cloudStorage.enumerate(),
           await _utmCaches.enumerate(),
+          await _tartCache.enumerate(),
           _system.enumerate(),
         ]);
 
@@ -204,9 +215,28 @@ class CleanRepositoryImpl implements CleanRepository {
   /// Runs [candidate]'s owner command. Returns null on success, or a failure
   /// message — there is no native refusal channel for this the way Trash
   /// has one, so the process's own exit code is the whole signal.
+  ///
+  /// When [CleanCandidate.recheckProcessGuard] is set, this reconfirms every
+  /// named process is still not running immediately before running the
+  /// command — the scan-time check that made the candidate eligible can be
+  /// stale by the time the user approves it. Mirrors Mole's own second
+  /// `mole_pgrep_any` check right before it runs `tart prune`.
   Future<String?> _runOwnerCommand(CleanCandidate candidate) async {
     final command = candidate.ownerCommand;
     if (command == null || command.isEmpty) return 'no command to run';
+
+    final recheck = candidate.recheckProcessGuard;
+    if (recheck != null) {
+      final liveness = await _ownerCommandRecheckGuard.check(
+        exactNames: recheck,
+      );
+      if (liveness != ProcessLiveness.notRunning) {
+        return liveness == ProcessLiveness.running
+            ? 'skipped: ${recheck.join(', ')} started running'
+            : 'skipped: process state could not be confirmed';
+      }
+    }
+
     final result = await _ownerCommandRunner.run(
       command.first,
       command.skip(1).toList(),

@@ -9,6 +9,7 @@ class CleanSectionTargets {
     this.section,
     this.paths, {
     this.ownerCommands = const {},
+    this.ownerCommandRechecks = const {},
     this.privilegedDeletionPaths = const {},
   });
 
@@ -20,6 +21,13 @@ class CleanSectionTargets {
   /// clean --force`, `go clean -modcache`, ...) rather than a Trash move of
   /// the path itself. A path absent here is removed the ordinary way.
   final Map<String, List<String>> ownerCommands;
+
+  /// path -> exact process names an owner command in [ownerCommands] must
+  /// reconfirm not running immediately before it runs, closing the race
+  /// between scan time and approval. A path absent here runs with no
+  /// recheck — most owner commands (npm, corepack, bun) have no such race
+  /// in Mole either.
+  final Map<String, List<String>> ownerCommandRechecks;
 
   /// Paths that must be deleted through the administrator-privileges
   /// channel rather than a Trash move — the narrow, explicit set of
@@ -77,6 +85,7 @@ class BuildCleanPlan {
             skipReason: reason,
             ownerCommand: section.ownerCommands[path],
             requiresPrivilegedDeletion: privileged,
+            recheckProcessGuard: section.ownerCommandRechecks[path],
           ),
         );
       }

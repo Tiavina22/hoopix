@@ -21,6 +21,7 @@ class CleanCandidate {
     this.skipReason,
     this.ownerCommand,
     this.requiresPrivilegedDeletion = false,
+    this.recheckProcessGuard,
   });
 
   final String path;
@@ -53,6 +54,15 @@ class CleanCandidate {
   /// a candidate needs at most one non-default removal mechanism.
   final bool requiresPrivilegedDeletion;
 
+  /// When set, an owner command must reconfirm every one of these exact
+  /// process names is still not running immediately before it runs — the
+  /// scan-time check in [isEligible] alone leaves a window between preview
+  /// and approval where the owning app could have been launched. Mirrors
+  /// Mole's own second `mole_pgrep_any` check right before it runs `tart
+  /// prune`. Null for an owner command with no such race, or for the
+  /// default Trash/privileged-delete mechanisms.
+  final List<String>? recheckProcessGuard;
+
   bool get isEligible => skipReason == null;
   bool get isOwnerCommand => ownerCommand != null;
 
@@ -68,6 +78,7 @@ class CleanCandidate {
     skipReason: skipReason,
     ownerCommand: ownerCommand,
     requiresPrivilegedDeletion: requiresPrivilegedDeletion,
+    recheckProcessGuard: recheckProcessGuard,
   );
 }
 

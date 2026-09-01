@@ -8,6 +8,7 @@ import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/repositories/clean_repository_impl.dart';
@@ -268,6 +269,128 @@ void main() {
         '${home.path}/Library/Containers/com.utmapp.UTM/Data/tmp/download.iso',
       ),
     );
+  });
+
+  test('the Virtualization section is merged into the plan with its owner '
+      'command intact', () async {
+    await Directory('${home.path}/.tart/cache/entry').create(recursive: true);
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      tartCache: TartCacheLocalDataSource(
+        home: home.path,
+        guard: ProcessGuard(
+          FakeProcessRunner({
+            'pgrep -x tart': ProcessResult.failure(
+              ProcessFailure.nonZeroExit('pgrep', 1, ''),
+            ),
+          }),
+        ),
+        probe: FakeProcessRunner({
+          'tart --version': ProcessResult.success('1.0'),
+        }),
+      ),
+    );
+    final plan = await repository.watchPlan().first;
+
+    final cacheRoot = '${home.path}/.tart/cache';
+    final candidate = plan.candidates.singleWhere((c) => c.path == cacheRoot);
+    expect(candidate.ownerCommand, isNotNull);
+    expect(candidate.recheckProcessGuard, ['tart']);
+  });
+
+  test('refuses an owner command whose recheck guard finds the process now '
+      'running, without running the command', () async {
+    final commandRunner = FakeProcessRunner({
+      'tart prune --entries caches --older-than 30': ProcessResult.success(''),
+    });
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      ownerCommandRunner: commandRunner,
+      ownerCommandRecheckGuard: ProcessGuard(
+        FakeProcessRunner({'pgrep -x tart': ProcessResult.success('123')}),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '${home.path}/.tart/cache',
+      section: 'Virtualization',
+      ownerCommand: const [
+        'tart',
+        'prune',
+        '--entries',
+        'caches',
+        '--older-than',
+        '30',
+      ],
+      recheckProcessGuard: const ['tart'],
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+    final entries = readLog();
+    expect(entries.single['outcome'], 'refused');
+  });
+
+  test('refuses an owner command whose recheck guard cannot confirm the '
+      'process state', () async {
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      ownerCommandRecheckGuard: ProcessGuard(
+        FakeProcessRunner({
+          'pgrep -x tart': ProcessResult.failure(
+            ProcessFailure.nonZeroExit('pgrep', 2, 'usage'),
+          ),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '${home.path}/.tart/cache',
+      section: 'Virtualization',
+      ownerCommand: const ['tart', 'prune'],
+      recheckProcessGuard: const ['tart'],
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+  });
+
+  test('runs an owner command once its recheck guard reconfirms the process '
+      'is not running', () async {
+    final commandRunner = FakeProcessRunner({
+      'tart prune --entries caches --older-than 30': ProcessResult.success(''),
+    });
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      ownerCommandRunner: commandRunner,
+      ownerCommandRecheckGuard: ProcessGuard(
+        FakeProcessRunner({
+          'pgrep -x tart': ProcessResult.failure(
+            ProcessFailure.nonZeroExit('pgrep', 1, ''),
+          ),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '${home.path}/.tart/cache',
+      section: 'Virtualization',
+      ownerCommand: const [
+        'tart',
+        'prune',
+        '--entries',
+        'caches',
+        '--older-than',
+        '30',
+      ],
+      recheckProcessGuard: const ['tart'],
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, isEmpty);
+    final entries = readLog();
+    expect(entries.single['outcome'], 'cleared');
   });
 
   test(
