@@ -9,6 +9,7 @@ import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
@@ -524,6 +525,37 @@ void main() {
         '/High Quality Media';
     final candidate = plan.candidates.singleWhere((c) => c.path == target);
     expect(candidate.recheckProcessGuard?.exactNames, ['Final Cut Pro']);
+  });
+
+  test('the Apps & utilities section is merged with JianyingPro generated '
+      'caches', () async {
+    await Directory(
+      '${home.path}/Movies/JianyingPro/User Data/Cache/recognize',
+    ).create(recursive: true);
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      jianyingProGeneratedCaches: JianyingProGeneratedCachesLocalDataSource(
+        home: home.path,
+        guard: ProcessGuard(
+          FakeProcessRunner({
+            'pgrep -x VideoFusion-macOS': ProcessResult.failure(
+              ProcessFailure.nonZeroExit('pgrep', 1, ''),
+            ),
+            'pgrep -f /VideoFusion-macOS.app/Contents/MacOS/VideoFusion-macOS':
+                ProcessResult.failure(
+                  ProcessFailure.nonZeroExit('pgrep', 1, ''),
+                ),
+          }),
+        ),
+      ),
+    );
+    final plan = await repository.watchPlan().first;
+
+    expect(
+      plan.candidates.map((c) => c.path),
+      contains('${home.path}/Movies/JianyingPro/User Data/Cache/recognize'),
+    );
   });
 
   test(
