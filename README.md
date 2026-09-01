@@ -2,6 +2,8 @@
 
 A free, open-source macOS maintenance app, built with Flutter.
 
+Licensed under the [GNU GPLv3](LICENSE).
+
 Hoopix is an alternative to the paid native Mac apps in this space: cleanup,
 app management, maintenance, disk maps, and live system status in one place,
 with the interface free and the source open.
