@@ -11,6 +11,7 @@ import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_lo
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_whitelist.dart';
 import 'package:hoopix/features/clean/domain/entities/path_protection.dart';
@@ -39,6 +40,7 @@ class CleanRepositoryImpl implements CleanRepository {
     AppsAndUtilitiesLocalDataSource? appsAndUtilities,
     AppLeftoversLocalDataSource? appLeftovers,
     BrowserProfileCachesLocalDataSource? browserProfileCaches,
+    XcodeCachesLocalDataSource? xcodeCaches,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -64,6 +66,7 @@ class CleanRepositoryImpl implements CleanRepository {
        _browserProfileCaches =
            browserProfileCaches ??
            BrowserProfileCachesLocalDataSource(home: home),
+       _xcodeCaches = xcodeCaches ?? XcodeCachesLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -77,6 +80,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final AppsAndUtilitiesLocalDataSource _appsAndUtilities;
   final AppLeftoversLocalDataSource _appLeftovers;
   final BrowserProfileCachesLocalDataSource _browserProfileCaches;
+  final XcodeCachesLocalDataSource _xcodeCaches;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -106,6 +110,7 @@ class CleanRepositoryImpl implements CleanRepository {
           _appsAndUtilities.enumerate(),
           await _appLeftovers.enumerate(),
           await _browserProfileCaches.enumerate(),
+          await _xcodeCaches.enumerate(),
           _system.enumerate(),
         ]);
 

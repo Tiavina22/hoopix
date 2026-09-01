@@ -7,6 +7,7 @@ import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/repositories/clean_repository_impl.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 
@@ -172,6 +173,40 @@ void main() {
       contains(
         '${home.path}/Library/Application Support/Vivaldi/Default/GPUCache/blob',
       ),
+    );
+  });
+
+  test('the Xcode caches section is merged into the plan', () async {
+    await Directory(
+      '${home.path}/Library/Developer/Xcode/DerivedData/MyApp-abc123',
+    ).create(recursive: true);
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      xcodeCaches: XcodeCachesLocalDataSource(
+        home: home.path,
+        guard: ProcessGuard(
+          FakeProcessRunner({
+            for (final process in [
+              'Xcode',
+              'xcodebuild',
+              'xctest',
+              'XCTRunner',
+              'XCBBuildService',
+              'swift-frontend',
+            ])
+              'pgrep -x $process': ProcessResult.failure(
+                ProcessFailure.nonZeroExit('pgrep', 1, ''),
+              ),
+          }),
+        ),
+      ),
+    );
+    final plan = await repository.watchPlan().first;
+
+    expect(
+      plan.candidates.map((c) => c.path),
+      contains('${home.path}/Library/Developer/Xcode/DerivedData/MyApp-abc123'),
     );
   });
 
