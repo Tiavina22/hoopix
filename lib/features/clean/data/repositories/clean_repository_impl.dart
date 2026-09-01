@@ -9,6 +9,7 @@ import 'package:hoopix/features/clean/data/datasources/app_leftovers_local_datas
 import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
@@ -41,6 +42,7 @@ class CleanRepositoryImpl implements CleanRepository {
     AppLeftoversLocalDataSource? appLeftovers,
     BrowserProfileCachesLocalDataSource? browserProfileCaches,
     XcodeCachesLocalDataSource? xcodeCaches,
+    CloudStorageLocalDataSource? cloudStorage,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -67,6 +69,7 @@ class CleanRepositoryImpl implements CleanRepository {
            browserProfileCaches ??
            BrowserProfileCachesLocalDataSource(home: home),
        _xcodeCaches = xcodeCaches ?? XcodeCachesLocalDataSource(home: home),
+       _cloudStorage = cloudStorage ?? CloudStorageLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -81,6 +84,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final AppLeftoversLocalDataSource _appLeftovers;
   final BrowserProfileCachesLocalDataSource _browserProfileCaches;
   final XcodeCachesLocalDataSource _xcodeCaches;
+  final CloudStorageLocalDataSource _cloudStorage;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -111,6 +115,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _appLeftovers.enumerate(),
           await _browserProfileCaches.enumerate(),
           await _xcodeCaches.enumerate(),
+          await _cloudStorage.enumerate(),
           _system.enumerate(),
         ]);
 
