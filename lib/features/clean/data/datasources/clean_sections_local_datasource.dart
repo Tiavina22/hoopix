@@ -37,6 +37,7 @@ class CleanSectionsLocalDataSource {
     CleanSectionTargets(cloudAndOffice, _cloudAndOfficeTargets()),
     CleanSectionTargets(virtualization, _virtualizationTargets()),
     CleanSectionTargets(applicationSupport, _applicationSupportTargets()),
+    CleanSectionTargets(deviceFirmware, _deviceFirmwareTargets()),
   ];
 
   static const userEssentials = 'User essentials';
@@ -45,6 +46,7 @@ class CleanSectionsLocalDataSource {
   static const cloudAndOffice = 'Cloud & Office';
   static const applicationSupport = 'Application Support';
   static const virtualization = 'Virtualization';
+  static const deviceFirmware = 'Device backups & firmware';
 
   List<String> _userEssentialsTargets() {
     final targets = <String>[];
@@ -470,7 +472,8 @@ class CleanSectionsLocalDataSource {
       final appName = appDir.split('/').last;
       if (isCriticalSystemComponent(appName)) continue;
       final protectedByName =
-          shouldProtectData(appName) || shouldProtectData(appName.toLowerCase());
+          shouldProtectData(appName) ||
+          shouldProtectData(appName.toLowerCase());
       if (protectedByName) continue;
       if (shouldProtectPath(appDir, home: home)) continue;
 
@@ -517,6 +520,60 @@ class CleanSectionsLocalDataSource {
             FileSystemEntity.typeSync('$appDir/$marker', followLinks: false) !=
             FileSystemEntityType.notFound,
       );
+
+  /// Port of `clean_cached_device_firmware`: downloaded `.ipsw` restore
+  /// images for iOS/iPadOS/iPod devices, re-downloadable on the next
+  /// restore. iTunes' three per-device-kind folders are a direct listing;
+  /// Apple Configurator nests firmware under a per-team-id group container,
+  /// so every `*.group.com.apple.configurator` container is scanned in
+  /// full rather than just its top level.
+  List<String> _deviceFirmwareTargets() {
+    final targets = <String>[];
+
+    for (final kind in ['iPhone', 'iPad', 'iPod']) {
+      targets.addAll(
+        _ipswFilesIn('$home/Library/iTunes/$kind Software Updates'),
+      );
+    }
+
+    for (final container in _realDirectoriesOf(
+      '$home/Library/Group Containers',
+    )) {
+      if (container.split('/').last.endsWith('.group.com.apple.configurator')) {
+        targets.addAll(_ipswFilesUnder(container));
+      }
+    }
+
+    return targets;
+  }
+
+  List<String> _ipswFilesIn(String dir) => [
+    for (final child in _childrenOf(dir))
+      if (child.endsWith('.ipsw')) child,
+  ];
+
+  List<String> _ipswFilesUnder(String root, {int maxDepth = 6}) {
+    final targets = <String>[];
+    void walk(String dir, int depth) {
+      if (depth > maxDepth) return;
+      List<FileSystemEntity> entries;
+      try {
+        entries = _directory(dir).listSync(followLinks: false);
+      } on FileSystemException {
+        return;
+      }
+      for (final entity in entries) {
+        if (entity is Directory) {
+          walk(entity.path, depth + 1);
+        } else if (entity is File && entity.path.endsWith('.ipsw')) {
+          targets.add(entity.path);
+        }
+      }
+    }
+
+    walk(root, 1);
+    return targets..sort();
+  }
 
   /// Immediate children of [path], or nothing when it cannot be listed.
   /// Symlinks are listed but never followed, so a link cannot redirect the
