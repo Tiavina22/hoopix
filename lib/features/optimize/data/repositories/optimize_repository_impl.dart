@@ -8,6 +8,7 @@ import 'package:hoopix/features/optimize/data/datasources/prevent_network_dsstor
 import 'package:hoopix/features/optimize/data/datasources/quarantine_cleanup_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/saved_state_cleanup_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/shared_file_list_repair_task.dart';
+import 'package:hoopix/features/optimize/data/datasources/spotlight_orphan_rules_cleanup_task.dart';
 import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 import 'package:hoopix/features/optimize/domain/repositories/optimize_repository.dart';
 
@@ -39,6 +40,7 @@ class OptimizeRepositoryImpl implements OptimizeRepository {
              CoreduetCleanupTask(home: home),
              SharedFileListRepairTask(home: home),
              FixBrokenConfigsTask(home: home),
+             SpotlightOrphanRulesCleanupTask(home: home),
            ];
 
   final List<OptimizeTaskRunner> _tasks;

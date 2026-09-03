@@ -63,6 +63,7 @@ void main() {
       'coreduet_cleanup',
       'shared_file_list_repair',
       'fix_broken_configs',
+      'spotlight_orphan_rules_cleanup',
     ]);
   });
 }
