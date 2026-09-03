@@ -39,6 +39,7 @@
   "cleanNothingToDo": "Rien \u00e0 nettoyer pour le moment.",
   "cleanFailed": "Impossible de d\u00e9terminer quoi nettoyer : {error}",
   "cleanItemCount": "{count, plural, one{{count} \u00e9l\u00e9ment} other{{count} \u00e9l\u00e9ments}}",
+  "cleanNoneSelected": "Rien de s\u00e9lectionn\u00e9",
   "cleanAndMore": "{count, plural, one{et 1 autre} other{et {count} autres}}",
   "cleanKeptTitle": "Conserv\u00e9",
   "cleanKeptProtected": "Prot\u00e9g\u00e9",

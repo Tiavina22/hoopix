@@ -95,6 +95,7 @@
       "count": { "type": "int" }
     }
   },
+  "cleanNoneSelected": "Nothing selected",
   "cleanAndMore": "{count, plural, one{and 1 more} other{and {count} more}}",
   "@cleanAndMore": {
     "placeholders": {

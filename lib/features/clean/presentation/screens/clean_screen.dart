@@ -51,18 +51,19 @@ class _CleanScreenState extends State<CleanScreen> {
     super.dispose();
   }
 
-  /// Nothing moves until the user confirms how much, and where it goes.
+  /// Nothing moves until the user confirms how much, and where it goes —
+  /// and only what they left checked is on offer.
   Future<void> _confirmAndClean() async {
     final l10n = AppLocalizations.of(context)!;
-    final plan = _controller.plan;
-    if (plan == null || plan.eligible.isEmpty) return;
+    final selected = _controller.selectedEligible;
+    if (selected.isEmpty) return;
 
-    final irreversibleCount = plan.irreversibleCount;
+    final irreversibleCount = _controller.selectedIrreversibleCount;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => _CleanConfirmationDialog(
-        count: plan.eligible.length,
-        sizeBytes: plan.reclaimableBytes,
+        count: selected.length,
+        sizeBytes: _controller.selectedReclaimableBytes,
         irreversibleCount: irreversibleCount,
       ),
     );
@@ -77,8 +78,8 @@ class _CleanScreenState extends State<CleanScreen> {
           failures.isNotEmpty
               ? l10n.cleanTrashRefused(failures.length)
               : irreversibleCount > 0
-              ? l10n.cleanCleared(plan.eligible.length)
-              : l10n.cleanTrashed(plan.eligible.length),
+              ? l10n.cleanCleared(selected.length)
+              : l10n.cleanTrashed(selected.length),
         ),
       ),
     );
@@ -119,6 +120,7 @@ class _Header extends StatelessWidget {
     final palette = context.palette;
     final l10n = AppLocalizations.of(context)!;
     final plan = controller.plan;
+    final selected = controller.selectedEligible;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -134,14 +136,19 @@ class _Header extends StatelessWidget {
               ),
             ),
             const SizedBox(width: HoopixSpacing.md),
-            if (plan != null && plan.eligible.isNotEmpty)
+            if (plan != null && plan.eligible.isNotEmpty) ...[
+              _MasterCheckbox(controller: controller),
+              const SizedBox(width: HoopixSpacing.xs),
               Text(
-                '${l10n.cleanItemCount(plan.eligible.length)}'
-                ' · ${formatBytes(plan.reclaimableBytes)}',
+                selected.isEmpty
+                    ? l10n.cleanNoneSelected
+                    : '${l10n.cleanItemCount(selected.length)}'
+                          ' · ${formatBytes(controller.selectedReclaimableBytes)}',
                 style: HoopixType.callout.copyWith(
                   color: palette.labelTertiary,
                 ),
               ),
+            ],
             const Spacer(),
             FilledButton(
               onPressed: controller.canApprove ? onClean : null,
@@ -156,7 +163,7 @@ class _Header extends StatelessWidget {
               child: Text(
                 controller.isRemoving
                     ? l10n.cleanWorking
-                    : (plan?.irreversibleCount ?? 0) > 0
+                    : controller.selectedIrreversibleCount > 0
                     ? l10n.cleanCleanUp
                     : l10n.cleanMoveToTrash,
               ),
@@ -170,6 +177,40 @@ class _Header extends StatelessWidget {
           style: HoopixType.callout.copyWith(color: palette.labelSecondary),
         ),
       ],
+    );
+  }
+}
+
+/// Tri-state checkbox for the whole plan: checked when everything eligible
+/// is selected, unchecked when nothing is, indeterminate in between.
+/// Toggling from either unchecked or indeterminate selects everything.
+class _MasterCheckbox extends StatelessWidget {
+  const _MasterCheckbox({required this.controller});
+
+  final CleanController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final eligible = controller.plan?.eligible ?? const [];
+    final selectedCount = controller.selectedEligible.length;
+    final value = selectedCount == 0
+        ? false
+        : selectedCount == eligible.length
+        ? true
+        : null;
+
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: Checkbox(
+        value: value,
+        tristate: true,
+        activeColor: palette.brand,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        onChanged: (_) => controller.setAllSelected(value != true),
+      ),
     );
   }
 }
@@ -216,45 +257,81 @@ class _Body extends StatelessWidget {
       itemBuilder: (context, index) {
         if (index == sections.length) return _KeptCard(plan: plan);
         final section = sections[index];
-        return _SectionCard(title: section.key, candidates: section.value);
+        return _SectionCard(
+          title: section.key,
+          candidates: section.value,
+          controller: controller,
+        );
       },
     );
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.candidates});
+class _SectionCard extends StatefulWidget {
+  const _SectionCard({
+    required this.title,
+    required this.candidates,
+    required this.controller,
+  });
 
   final String title;
   final List<CleanCandidate> candidates;
+  final CleanController controller;
+
+  @override
+  State<_SectionCard> createState() => _SectionCardState();
+}
+
+class _SectionCardState extends State<_SectionCard> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final l10n = AppLocalizations.of(context)!;
+    final candidates = widget.candidates;
     final total = candidates.fold<int>(0, (sum, c) => sum + (c.sizeBytes ?? 0));
+    final shown = _expanded
+        ? candidates
+        : candidates.take(_shownPerSection).toList();
+    final hiddenCount = candidates.length - shown.length;
 
     return MetricCard(
-      title: title,
-      trailing: Text(
-        formatBytes(total),
-        style: HoopixType.numericCaption.copyWith(
-          color: palette.labelSecondary,
-        ),
+      title: widget.title,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _SectionCheckbox(
+            section: widget.title,
+            candidates: candidates,
+            controller: widget.controller,
+          ),
+          const SizedBox(width: HoopixSpacing.xs),
+          Text(
+            formatBytes(total),
+            style: HoopixType.numericCaption.copyWith(
+              color: palette.labelSecondary,
+            ),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final candidate in candidates.take(_shownPerSection))
-            _CandidateRow(candidate: candidate),
-          if (candidates.length > _shownPerSection)
+          for (final candidate in shown)
+            _CandidateRow(candidate: candidate, controller: widget.controller),
+          if (hiddenCount > 0)
             Padding(
               padding: const EdgeInsets.only(top: HoopixSpacing.sm),
-              child: Text(
-                l10n.cleanAndMore(candidates.length - _shownPerSection),
-                style: HoopixType.caption.copyWith(
-                  color: palette.labelTertiary,
+              child: InkWell(
+                onTap: () => setState(() => _expanded = true),
+                child: Text(
+                  l10n.cleanAndMore(hiddenCount),
+                  style: HoopixType.caption.copyWith(
+                    color: palette.labelTertiary,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
               ),
             ),
@@ -264,14 +341,55 @@ class _SectionCard extends StatelessWidget {
   }
 
   /// Enough to show what a section is about without turning the preview into
-  /// a file listing; the count below says how much is not shown.
+  /// a file listing; "and N more" expands to show and select the rest.
   static const _shownPerSection = 8;
 }
 
+/// Tri-state checkbox for one section: checked when every candidate in it
+/// is selected, unchecked when none are, indeterminate in between.
+class _SectionCheckbox extends StatelessWidget {
+  const _SectionCheckbox({
+    required this.section,
+    required this.candidates,
+    required this.controller,
+  });
+
+  final String section;
+  final List<CleanCandidate> candidates;
+  final CleanController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final selectedCount = candidates
+        .where((c) => controller.isSelected(c.path))
+        .length;
+    final value = selectedCount == 0
+        ? false
+        : selectedCount == candidates.length
+        ? true
+        : null;
+
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: Checkbox(
+        value: value,
+        tristate: true,
+        activeColor: palette.brand,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        onChanged: (_) => controller.setSectionSelected(section, value != true),
+      ),
+    );
+  }
+}
+
 class _CandidateRow extends StatelessWidget {
-  const _CandidateRow({required this.candidate});
+  const _CandidateRow({required this.candidate, required this.controller});
 
   final CleanCandidate candidate;
+  final CleanController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +401,18 @@ class _CandidateRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: Checkbox(
+              value: controller.isSelected(candidate.path),
+              activeColor: palette.brand,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              onChanged: (_) => controller.toggle(candidate.path),
+            ),
+          ),
+          const SizedBox(width: HoopixSpacing.sm),
           Expanded(
             child: Text(
               candidate.path.split('/').last,

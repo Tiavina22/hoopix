@@ -314,4 +314,105 @@ void main() {
     final button = tester.widget<FilledButton>(find.byType(FilledButton));
     expect(button.onPressed, isNull);
   });
+
+  group('selection', () {
+    CleanPlan twoItemPlan() => const CleanPlan(
+      candidates: [
+        CleanCandidate(
+          path: '/Users/tester/Library/Caches/app-one',
+          section: 'User essentials',
+          sizeBytes: 1024,
+        ),
+        CleanCandidate(
+          path: '/Users/tester/Library/Caches/app-two',
+          section: 'User essentials',
+          sizeBytes: 2048,
+        ),
+      ],
+    );
+
+    testWidgets(
+      'unchecking one item excludes only that path from the approval',
+      (tester) async {
+        final repository = _FakeCleanRepository([twoItemPlan()]);
+        await tester.pumpWidget(harness(repository));
+        await tester.pumpAndSettle();
+
+        // Checkbox order: master, section, app-one, app-two.
+        await tester.tap(find.byType(Checkbox).at(2));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Move to Trash'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(TextButton, 'Move to Trash'));
+        await tester.pumpAndSettle();
+
+        expect(repository.approved.single, [
+          '/Users/tester/Library/Caches/app-two',
+        ]);
+      },
+    );
+
+    testWidgets('unchecking the section checkbox excludes the whole section', (
+      tester,
+    ) async {
+      final repository = _FakeCleanRepository([twoItemPlan()]);
+      await tester.pumpWidget(harness(repository));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Checkbox).at(1)); // section checkbox
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<FilledButton>(find.byType(FilledButton));
+      expect(button.onPressed, isNull);
+      expect(find.text('Nothing selected'), findsOneWidget);
+    });
+
+    testWidgets(
+      'unchecking the master checkbox excludes everything, checking it '
+      'again restores it all',
+      (tester) async {
+        final repository = _FakeCleanRepository([twoItemPlan()]);
+        await tester.pumpWidget(harness(repository));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(Checkbox).first); // master checkbox
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+          isNull,
+        );
+
+        await tester.tap(find.byType(Checkbox).first);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Move to Trash'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(TextButton, 'Move to Trash'));
+        await tester.pumpAndSettle();
+
+        expect(repository.approved.single, [
+          '/Users/tester/Library/Caches/app-one',
+          '/Users/tester/Library/Caches/app-two',
+        ]);
+      },
+    );
+
+    testWidgets('the header count reflects the selection, not the plan', (
+      tester,
+    ) async {
+      final repository = _FakeCleanRepository([twoItemPlan()]);
+      await tester.pumpWidget(harness(repository));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('2 items'), findsOneWidget);
+
+      await tester.tap(find.byType(Checkbox).at(2));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('1 item'), findsOneWidget);
+      expect(find.textContaining('2 items'), findsNothing);
+    });
+  });
 }
