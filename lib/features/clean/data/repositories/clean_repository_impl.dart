@@ -9,9 +9,11 @@ import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/app_leftovers_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/chromium_old_versions_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/edge_updater_old_versions_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
@@ -57,6 +59,8 @@ class CleanRepositoryImpl implements CleanRepository {
     JianyingProGeneratedCachesLocalDataSource? jianyingProGeneratedCaches,
     PnpmStoreLocalDataSource? pnpmStore,
     MacosInstallerLocalDataSource? macosInstaller,
+    ChromiumOldVersionsLocalDataSource? chromiumOldVersions,
+    EdgeUpdaterOldVersionsLocalDataSource? edgeUpdaterOldVersions,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -96,6 +100,12 @@ class CleanRepositoryImpl implements CleanRepository {
            JianyingProGeneratedCachesLocalDataSource(home: home),
        _pnpmStore = pnpmStore ?? PnpmStoreLocalDataSource(home: home),
        _macosInstaller = macosInstaller ?? MacosInstallerLocalDataSource(),
+       _chromiumOldVersions =
+           chromiumOldVersions ??
+           ChromiumOldVersionsLocalDataSource(home: home),
+       _edgeUpdaterOldVersions =
+           edgeUpdaterOldVersions ??
+           EdgeUpdaterOldVersionsLocalDataSource(home: home),
        _installerRecheckProbe =
            installerRecheckProbe ?? const MacosInstallerProbe(),
        _sizeProbe =
@@ -122,6 +132,8 @@ class CleanRepositoryImpl implements CleanRepository {
   final JianyingProGeneratedCachesLocalDataSource _jianyingProGeneratedCaches;
   final PnpmStoreLocalDataSource _pnpmStore;
   final MacosInstallerLocalDataSource _macosInstaller;
+  final ChromiumOldVersionsLocalDataSource _chromiumOldVersions;
+  final EdgeUpdaterOldVersionsLocalDataSource _edgeUpdaterOldVersions;
   final MacosInstallerProbe _installerRecheckProbe;
   final SystemLocalDataSource _system;
   final Trash _trash;
@@ -161,6 +173,8 @@ class CleanRepositoryImpl implements CleanRepository {
           await _jianyingProGeneratedCaches.enumerate(),
           await _pnpmStore.enumerate(),
           await _macosInstaller.enumerate(),
+          await _chromiumOldVersions.enumerate(),
+          await _edgeUpdaterOldVersions.enumerate(),
           _system.enumerate(),
         ]);
 
