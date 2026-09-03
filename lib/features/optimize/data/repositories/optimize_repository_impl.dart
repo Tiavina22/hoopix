@@ -1,6 +1,8 @@
 import 'package:hoopix/features/optimize/data/datasources/cache_refresh_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/coreduet_cleanup_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/fix_broken_configs_task.dart';
+import 'package:hoopix/features/optimize/data/datasources/launch_agents_cleanup_task.dart';
+import 'package:hoopix/features/optimize/data/datasources/launch_services_rebuild_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/legacy_overrides_audit_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/notification_cleanup_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/optimize_task_runner.dart';
@@ -41,6 +43,8 @@ class OptimizeRepositoryImpl implements OptimizeRepository {
              SharedFileListRepairTask(home: home),
              FixBrokenConfigsTask(home: home),
              SpotlightOrphanRulesCleanupTask(home: home),
+             LaunchServicesRebuildTask(),
+             LaunchAgentsCleanupTask(home: home),
            ];
 
   final List<OptimizeTaskRunner> _tasks;
