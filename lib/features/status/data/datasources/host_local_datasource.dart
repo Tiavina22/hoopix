@@ -7,18 +7,29 @@ class HostLocalDataSource {
   final ProcessRunner _processRunner;
 
   Future<HostStatusModel> fetch() async {
-    final boottime = await _processRunner.run('sysctl', ['-n', 'kern.boottime']);
+    final boottime = await _processRunner.run('sysctl', [
+      '-n',
+      'kern.boottime',
+    ]);
     final version = await _processRunner.run('sw_vers', ['-productVersion']);
     final host = await _processRunner.run('hostname', const []);
+    final hardware = await _processRunner.run('system_profiler', [
+      'SPHardwareDataType',
+    ]);
 
     final uptime = boottime.isSuccess
         ? HostStatusModel.uptimeFromBoottime(boottime.stdout!, DateTime.now())
         : Duration.zero;
+    final parsedHardware = hardware.isSuccess
+        ? HostStatusModel.parseHardwareInfo(hardware.stdout!)
+        : (model: null, chip: null);
 
     return HostStatusModel(
       hostname: host.isSuccess ? host.stdout!.trim() : 'unknown',
       osVersion: version.isSuccess ? version.stdout!.trim() : 'unknown',
       uptime: uptime,
+      model: parsedHardware.model,
+      chip: parsedHardware.chip,
     );
   }
 }

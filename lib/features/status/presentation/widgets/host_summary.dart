@@ -21,9 +21,10 @@ class HostSummary extends StatelessWidget {
         ? l10n.hostInfoUnavailable
         : [
             host.hostname.replaceFirst(RegExp(r'\.local$'), ''),
+            _modelAndChip(host.model, host.chip),
             l10n.hostMacOsVersion(host.osVersion),
             l10n.hostUpUptime(formatDuration(host.uptime)),
-          ].join('  ·  ');
+          ].whereType<String>().where((s) => s.isNotEmpty).join('  ·  ');
 
     return Text(
       text,
@@ -31,5 +32,15 @@ class HostSummary extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: HoopixType.body.copyWith(color: palette.labelSecondary),
     );
+  }
+
+  /// "MacBook Pro (Apple M1)", trimmed to whichever half is known. Null
+  /// when neither is, so the joined summary line doesn't gain a stray
+  /// separator for a probe that returned nothing.
+  static String? _modelAndChip(String? model, String? chip) {
+    if (model == null && chip == null) return null;
+    if (chip == null) return model;
+    if (model == null) return chip;
+    return '$model ($chip)';
   }
 }
