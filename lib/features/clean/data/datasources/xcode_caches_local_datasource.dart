@@ -31,16 +31,10 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// even names why: "Sizing is timeout-bounded but can still take long
 /// enough for a build to start").
 ///
-/// Not ported: Simulator caches
-/// (`~/Library/Developer/CoreSimulator/{Caches,Devices/*/data/tmp}`,
-/// `~/Library/Logs/CoreSimulator`). Mole's own guard for those is stronger
-/// than a process-name check — `_coresimulator_activity_state` also asks
-/// `xcrun simctl list devices booted` whether any simulator device is
-/// live, since a booted device can hold active CoreSimulator state with no
-/// matching foreground process. [ProcessGuard] does not have an
-/// `xcrun`/`simctl` equivalent yet, and a plain process-name check alone
-/// would be a strictly weaker guard than Mole's — left out rather than
-/// shipped with a known gap.
+/// Simulator caches are ported separately, in
+/// `SimulatorCachesLocalDataSource`: their guard is stronger than a
+/// process-name check, since a booted device holds live CoreSimulator
+/// state with no matching foreground process.
 class XcodeCachesLocalDataSource {
   XcodeCachesLocalDataSource({
     required this.home,

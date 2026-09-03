@@ -19,6 +19,7 @@ import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_c
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/simulator_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
@@ -62,6 +63,7 @@ class CleanRepositoryImpl implements CleanRepository {
     ChromiumOldVersionsLocalDataSource? chromiumOldVersions,
     EdgeUpdaterOldVersionsLocalDataSource? edgeUpdaterOldVersions,
     AutodeskLocalDataSource? autodesk,
+    SimulatorCachesLocalDataSource? simulatorCaches,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -107,6 +109,8 @@ class CleanRepositoryImpl implements CleanRepository {
            edgeUpdaterOldVersions ??
            EdgeUpdaterOldVersionsLocalDataSource(home: home),
        _autodesk = autodesk ?? AutodeskLocalDataSource(home: home),
+       _simulatorCaches =
+           simulatorCaches ?? SimulatorCachesLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -134,6 +138,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final ChromiumOldVersionsLocalDataSource _chromiumOldVersions;
   final EdgeUpdaterOldVersionsLocalDataSource _edgeUpdaterOldVersions;
   final AutodeskLocalDataSource _autodesk;
+  final SimulatorCachesLocalDataSource _simulatorCaches;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -175,6 +180,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _chromiumOldVersions.enumerate(),
           await _edgeUpdaterOldVersions.enumerate(),
           await _autodesk.enumerate(),
+          await _simulatorCaches.enumerate(),
           _system.enumerate(),
         ]);
 
@@ -335,6 +341,8 @@ class CleanRepositoryImpl implements CleanRepository {
   Map<String, Future<bool> Function(String path)> get _revalidators => {
     MacosInstallerLocalDataSource.revalidatorKey: _macosInstaller.stillEligible,
     AutodeskLocalDataSource.revalidatorKey: _autodesk.stillEligible,
+    SimulatorCachesLocalDataSource.revalidatorKey:
+        _simulatorCaches.stillEligible,
   };
 
   /// Null when the user has no whitelist file, which is what selects the
