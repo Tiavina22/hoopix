@@ -17,11 +17,13 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// A tool that is not installed falls back to sweeping its default cache
 /// directory directly.
 ///
-/// Not ported: pnpm (`clean_pnpm_stores`) needs multi-binary discovery
-/// across Corepack/Volta/global-npm shims plus a live "pnpm busy" process
-/// guard hoopix does not have; `npm config get cache` / `bun pm cache`
-/// custom-path resolution is skipped in favor of each tool's well-known
-/// default, so a user with a relocated cache keeps it out of this sweep.
+/// pnpm's own store prune (`clean_pnpm_stores`) is ported separately, in
+/// `PnpmStoreLocalDataSource` — it needs a real subprocess round trip to
+/// resolve the store path, not just a `--version` probe.
+///
+/// Not ported: `npm config get cache` / `bun pm cache` custom-path
+/// resolution is skipped in favor of each tool's well-known default, so a
+/// user with a relocated cache keeps it out of this sweep.
 class DeveloperToolsLocalDataSource {
   DeveloperToolsLocalDataSource({
     required this.home,

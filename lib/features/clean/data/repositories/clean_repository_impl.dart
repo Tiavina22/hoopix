@@ -14,6 +14,7 @@ import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datas
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
@@ -52,6 +53,7 @@ class CleanRepositoryImpl implements CleanRepository {
     TartCacheLocalDataSource? tartCache,
     FinalCutProGeneratedCachesLocalDataSource? finalCutProGeneratedCaches,
     JianyingProGeneratedCachesLocalDataSource? jianyingProGeneratedCaches,
+    PnpmStoreLocalDataSource? pnpmStore,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -88,6 +90,7 @@ class CleanRepositoryImpl implements CleanRepository {
        _jianyingProGeneratedCaches =
            jianyingProGeneratedCaches ??
            JianyingProGeneratedCachesLocalDataSource(home: home),
+       _pnpmStore = pnpmStore ?? PnpmStoreLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -110,6 +113,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final TartCacheLocalDataSource _tartCache;
   final FinalCutProGeneratedCachesLocalDataSource _finalCutProGeneratedCaches;
   final JianyingProGeneratedCachesLocalDataSource _jianyingProGeneratedCaches;
+  final PnpmStoreLocalDataSource _pnpmStore;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -146,6 +150,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _tartCache.enumerate(),
           await _finalCutProGeneratedCaches.enumerate(),
           await _jianyingProGeneratedCaches.enumerate(),
+          await _pnpmStore.enumerate(),
           _system.enumerate(),
         ]);
 

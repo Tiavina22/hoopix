@@ -10,6 +10,7 @@ import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_lo
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
@@ -556,6 +557,42 @@ void main() {
       plan.candidates.map((c) => c.path),
       contains('${home.path}/Movies/JianyingPro/User Data/Cache/recognize'),
     );
+  });
+
+  test('the Developer tools section is merged with the pnpm store owner '
+      'command intact', () async {
+    final storePath = '${home.path}/pnpm-store';
+    await Directory(storePath).create(recursive: true);
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      pnpmStore: PnpmStoreLocalDataSource(
+        home: home.path,
+        guard: ProcessGuard(
+          FakeProcessRunner({
+            r'pgrep -f (^|/)pnpm(\.cjs)?([[:space:]]|$)': ProcessResult.failure(
+              ProcessFailure.nonZeroExit('pgrep', 1, ''),
+            ),
+          }),
+        ),
+        probe: FakeProcessRunner({
+          'env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version':
+              ProcessResult.success('9.1.0'),
+          'env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm store path':
+              ProcessResult.success(storePath),
+        }),
+      ),
+    );
+    final plan = await repository.watchPlan().first;
+
+    final candidate = plan.candidates.singleWhere((c) => c.path == storePath);
+    expect(candidate.ownerCommand, [
+      'env',
+      'COREPACK_ENABLE_DOWNLOAD_PROMPT=0',
+      'pnpm',
+      'store',
+      'prune',
+    ]);
   });
 
   test(
