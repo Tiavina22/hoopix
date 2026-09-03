@@ -9,6 +9,7 @@ import 'package:hoopix/core/theme/theme_controller.dart';
 import 'package:hoopix/core/widgets/placeholder_screen.dart';
 import 'package:hoopix/features/analyze/presentation/screens/analyze_screen.dart';
 import 'package:hoopix/features/clean/presentation/screens/clean_screen.dart';
+import 'package:hoopix/features/optimize/presentation/screens/optimize_screen.dart';
 import 'package:hoopix/features/settings/presentation/screens/settings_screen.dart';
 import 'package:hoopix/features/status/presentation/screens/status_screen.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
@@ -59,6 +60,7 @@ class _AppShellState extends State<AppShell> {
     return switch (section) {
       HoopixSection.analyze => const AnalyzeScreen(),
       HoopixSection.clean => const CleanScreen(),
+      HoopixSection.optimize => const OptimizeScreen(),
       HoopixSection.status => const StatusScreen(),
       HoopixSection.settings => SettingsScreen(
         themeController: widget.themeController,

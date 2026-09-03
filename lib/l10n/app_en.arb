@@ -281,6 +281,22 @@
     }
   },
 
+  "optimizeRunButton": "Run Maintenance",
+  "optimizeRunning": "Running…",
+  "optimizeIdleHint": "Every task here is safe to run automatically — nothing asks you to choose what to keep.",
+  "optimizeFailed": "Couldn’t run maintenance: {error}",
+  "@optimizeFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "optimizeOutcomeApplied": "Applied",
+  "optimizeOutcomeUnchanged": "Already optimal",
+  "optimizeOutcomeSkipped": "Skipped",
+  "optimizeOutcomeUnavailable": "Unavailable",
+  "optimizeOutcomeAttention": "Needs attention",
+  "optimizeOutcomeFailed": "Failed",
+
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "No devices connected",
   "bluetoothBatteryLevel": "{name} · {battery}",

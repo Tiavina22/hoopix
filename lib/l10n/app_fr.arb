@@ -116,6 +116,17 @@
   "batteryOnBattery": "Sur batterie",
   "batteryStateWithRemaining": "{state} · {remaining} restant",
 
+  "optimizeRunButton": "Lancer la maintenance",
+  "optimizeRunning": "En cours…",
+  "optimizeIdleHint": "Chaque tâche ici est sûre à lancer automatiquement — rien ne vous demande de choisir quoi garder.",
+  "optimizeFailed": "Impossible de lancer la maintenance : {error}",
+  "optimizeOutcomeApplied": "Appliqué",
+  "optimizeOutcomeUnchanged": "Déjà optimal",
+  "optimizeOutcomeSkipped": "Ignoré",
+  "optimizeOutcomeUnavailable": "Indisponible",
+  "optimizeOutcomeAttention": "À vérifier",
+  "optimizeOutcomeFailed": "Échoué",
+
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "Aucun appareil connecté",
   "bluetoothBatteryLevel": "{name} · {battery}",

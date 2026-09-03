@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
 /// The six capabilities Mole offers, plus Settings; hoopix mirrors the same
-/// shape. Only [HoopixSection.status] and [HoopixSection.settings] have a
-/// real feature behind them today — the rest route to a shared placeholder
-/// until each gets its own feature module.
+/// shape. [isImplemented] sections have a real feature behind them; the
+/// rest route to a shared placeholder until each gets its own feature
+/// module.
 ///
 /// Icons are picked as one coherent outlined set (the closest Material has to
 /// SF Symbols) so the sidebar reads as a family rather than a grab bag.
@@ -24,6 +24,7 @@ enum HoopixSection {
   bool get isImplemented =>
       this == HoopixSection.analyze ||
       this == HoopixSection.clean ||
+      this == HoopixSection.optimize ||
       this == HoopixSection.status ||
       this == HoopixSection.settings;
 }
