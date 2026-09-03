@@ -74,7 +74,8 @@ final class PrivilegedDeleteChannel {
   /// caller chose freely. Grown one verified entry at a time, the same way
   /// the Dart-side sections are.
   private static let allowedRoots = [
-    "/Library/Caches/com.apple.iconservices.store"
+    "/Library/Caches/com.apple.iconservices.store",
+    "/Library/Apple/usr/share/rosetta/rosetta_update_bundle",
   ]
 
   private static func refusalReason(for path: String) -> String? {

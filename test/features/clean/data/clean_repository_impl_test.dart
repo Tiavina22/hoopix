@@ -227,6 +227,19 @@ void main() {
     },
   );
 
+  test('the User essentials section is merged with a .DS_Store from '
+      'FinderMetadataLocalDataSource', () async {
+    await File('${home.path}/Documents/.DS_Store').create(recursive: true);
+
+    final repository = CleanRepositoryImpl(home: home.path);
+    final plan = await repository.watchPlan().first;
+
+    expect(
+      plan.candidates.map((c) => c.path),
+      contains('${home.path}/Documents/.DS_Store'),
+    );
+  });
+
   test('the Developer tools section is merged into the plan', () async {
     await Directory(
       '${home.path}/.yarn/cache/some-package',

@@ -16,6 +16,7 @@ import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datas
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/edge_updater_old_versions_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/finder_metadata_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/orphaned_system_services_local_datasource.dart';
@@ -68,6 +69,7 @@ class CleanRepositoryImpl implements CleanRepository {
     SimulatorCachesLocalDataSource? simulatorCaches,
     SystemAgedSweepsLocalDataSource? systemAgedSweeps,
     OrphanedSystemServicesLocalDataSource? orphanedSystemServices,
+    FinderMetadataLocalDataSource? finderMetadata,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -120,6 +122,8 @@ class CleanRepositoryImpl implements CleanRepository {
        _orphanedSystemServices =
            orphanedSystemServices ??
            OrphanedSystemServicesLocalDataSource(home: home),
+       _finderMetadata =
+           finderMetadata ?? FinderMetadataLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -150,6 +154,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final SimulatorCachesLocalDataSource _simulatorCaches;
   final SystemAgedSweepsLocalDataSource _systemAgedSweeps;
   final OrphanedSystemServicesLocalDataSource _orphanedSystemServices;
+  final FinderMetadataLocalDataSource _finderMetadata;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -195,6 +200,7 @@ class CleanRepositoryImpl implements CleanRepository {
           _system.enumerate(),
           _systemAgedSweeps.enumerate(),
           await _orphanedSystemServices.enumerate(),
+          _finderMetadata.enumerate(),
         ]);
 
     // Every row is named and grouped before any measuring, so the preview
