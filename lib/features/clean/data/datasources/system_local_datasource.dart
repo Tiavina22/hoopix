@@ -13,14 +13,15 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// list is the safety boundary for this section, not a heuristic.
 ///
 /// Not ported: the rest of `clean_deep_system` — age-based
-/// `/Library/Caches` and `/Library/Logs` sweeps, crash reports, macOS
-/// installer apps, browser code-signature clone caches, GPU shader caches
-/// under `/private/var/folders`, and more — is a large, individually
-/// reasoned body of work of its own. This is the first proof that
-/// hoopix's privileged-deletion channel works end to end, not the whole
-/// section. `clean_local_snapshots` and the orphaned-system-services piece
-/// of App leftovers are deferred alongside it, for the same reason: both
-/// need this same privilege escalation.
+/// `/Library/Caches` and `/Library/Logs` sweeps, crash reports, browser
+/// code-signature clone caches, GPU shader caches under
+/// `/private/var/folders`, and more — is a large, individually reasoned
+/// body of work of its own; every one of those needs a generic age- or
+/// pattern-based bulk-delete primitive this channel does not have yet,
+/// unlike the exact single-path/single-bundle targets it already reaches
+/// (this one, and `MacosInstallerLocalDataSource`). `clean_local_snapshots`
+/// and the orphaned-system-services piece of App leftovers are deferred
+/// alongside it, for the same reason.
 class SystemLocalDataSource {
   const SystemLocalDataSource();
 

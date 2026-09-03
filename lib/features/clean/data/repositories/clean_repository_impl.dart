@@ -14,6 +14,8 @@ import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datas
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/macos_installer_probe.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
@@ -54,6 +56,7 @@ class CleanRepositoryImpl implements CleanRepository {
     FinalCutProGeneratedCachesLocalDataSource? finalCutProGeneratedCaches,
     JianyingProGeneratedCachesLocalDataSource? jianyingProGeneratedCaches,
     PnpmStoreLocalDataSource? pnpmStore,
+    MacosInstallerLocalDataSource? macosInstaller,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -62,6 +65,7 @@ class CleanRepositoryImpl implements CleanRepository {
     OperationLog? log,
     ProcessRunner? ownerCommandRunner,
     ProcessGuard? recheckGuard,
+    MacosInstallerProbe? installerRecheckProbe,
   }) : _trash = trash,
        _privilegedDelete = privilegedDelete,
        _system = system,
@@ -91,6 +95,9 @@ class CleanRepositoryImpl implements CleanRepository {
            jianyingProGeneratedCaches ??
            JianyingProGeneratedCachesLocalDataSource(home: home),
        _pnpmStore = pnpmStore ?? PnpmStoreLocalDataSource(home: home),
+       _macosInstaller = macosInstaller ?? MacosInstallerLocalDataSource(),
+       _installerRecheckProbe =
+           installerRecheckProbe ?? const MacosInstallerProbe(),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -114,6 +121,8 @@ class CleanRepositoryImpl implements CleanRepository {
   final FinalCutProGeneratedCachesLocalDataSource _finalCutProGeneratedCaches;
   final JianyingProGeneratedCachesLocalDataSource _jianyingProGeneratedCaches;
   final PnpmStoreLocalDataSource _pnpmStore;
+  final MacosInstallerLocalDataSource _macosInstaller;
+  final MacosInstallerProbe _installerRecheckProbe;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -151,6 +160,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _finalCutProGeneratedCaches.enumerate(),
           await _jianyingProGeneratedCaches.enumerate(),
           await _pnpmStore.enumerate(),
+          await _macosInstaller.enumerate(),
           _system.enumerate(),
         ]);
 
@@ -205,10 +215,18 @@ class CleanRepositoryImpl implements CleanRepository {
       for (final candidate in approved)
         if (candidate.isOwnerCommand) candidate,
     ];
-    final byPrivilegedDelete = [
-      for (final candidate in approved)
-        if (candidate.requiresPrivilegedDeletion) candidate,
-    ];
+    final byPrivilegedDelete = <CleanCandidate>[];
+    for (final candidate in approved) {
+      if (!candidate.requiresPrivilegedDeletion) continue;
+      final failure =
+          await _recheckFailure(candidate.recheckProcessGuard) ??
+          await _privilegedTargetRecheckFailure(candidate);
+      if (failure != null) {
+        failures[candidate.path] = failure;
+      } else {
+        byPrivilegedDelete.add(candidate);
+      }
+    }
 
     failures.addAll({
       ...await _trash.moveToTrash([
@@ -275,6 +293,30 @@ class CleanRepositoryImpl implements CleanRepository {
     return liveness == ProcessLiveness.running
         ? 'skipped: process started running'
         : 'skipped: process state could not be confirmed';
+  }
+
+  /// Null when [candidate] carries no [CleanCandidate.recheckPrivilegedTarget],
+  /// or its file identity and (when required) Software Update's state both
+  /// still match what made it eligible; otherwise a failure message. The
+  /// scan-time check that found this candidate eligible can be stale by the
+  /// time the user approves it — sizing it, then waiting on the user, both
+  /// happen after that check, exactly the window Mole's own second
+  /// eligibility probe exists to close.
+  Future<String?> _privilegedTargetRecheckFailure(
+    CleanCandidate candidate,
+  ) async {
+    final recheck = candidate.recheckPrivilegedTarget;
+    if (recheck == null) return null;
+
+    final identity = await _installerRecheckProbe.identity(candidate.path);
+    if (identity != recheck.expectedIdentity) {
+      return 'skipped: target changed since it was found eligible';
+    }
+    if (recheck.requireSoftwareUpdateNotPending &&
+        await _installerRecheckProbe.softwareUpdatePending()) {
+      return 'skipped: a software update is now pending';
+    }
+    return null;
   }
 
   /// Null when the user has no whitelist file, which is what selects the

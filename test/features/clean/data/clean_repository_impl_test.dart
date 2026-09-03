@@ -10,6 +10,8 @@ import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_lo
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/macos_installer_probe.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
@@ -595,6 +597,59 @@ void main() {
     ]);
   });
 
+  test('the System section is merged with a stale macOS installer app '
+      'discovered through MacosInstallerLocalDataSource', () async {
+    final applications = await Directory.systemTemp.createTemp(
+      'hoopix_installer_apps_',
+    );
+    addTearDown(() async {
+      if (applications.existsSync()) {
+        await applications.delete(recursive: true);
+      }
+    });
+    final installerPath = '${applications.path}/Install macOS Sequoia.app';
+    await Directory(installerPath).create(recursive: true);
+
+    final oldMtime =
+        DateTime.now()
+            .subtract(const Duration(days: 20))
+            .millisecondsSinceEpoch ~/
+        1000;
+    final responses = {
+      'sw_vers -productVersion': ProcessResult.success('15.6.1'),
+      'stat -f%d:%i:%m $installerPath': ProcessResult.success(
+        '16777232:123456:$oldMtime',
+      ),
+      'plutil -extract RecommendedUpdates json -o - '
+              '/Library/Preferences/com.apple.SoftwareUpdate.plist':
+          ProcessResult.success('[]'),
+      'pgrep -f $installerPath': ProcessResult.failure(
+        ProcessFailure.nonZeroExit('pgrep', 1, ''),
+      ),
+      '/usr/libexec/PlistBuddy -c Print :DTPlatformVersion '
+          '$installerPath/Contents/Info.plist': ProcessResult.success(
+        '14.0',
+      ),
+    };
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      macosInstaller: MacosInstallerLocalDataSource(
+        probe: MacosInstallerProbe(probe: FakeProcessRunner(responses)),
+        guard: ProcessGuard(FakeProcessRunner(responses)),
+        directory: (path) =>
+            path == '/Applications' ? applications : Directory(path),
+      ),
+    );
+    final plan = await repository.watchPlan().first;
+
+    final candidate = plan.candidates.singleWhere(
+      (c) => c.path == installerPath,
+    );
+    expect(candidate.requiresPrivilegedDeletion, isTrue);
+    expect(candidate.recheckPrivilegedTarget?.expectedIdentity, contains(':'));
+  });
+
   test(
     'runs privileged deletion instead of moving its path to Trash',
     () async {
@@ -689,6 +744,138 @@ void main() {
       expect(outcomes[systemCandidate.path], 'cleared');
     },
   );
+
+  test('refuses a privileged-deletion candidate whose recheck guard finds the '
+      'installer process now running, without deleting it', () async {
+    messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+      fail('privileged delete must not run once the recheck finds it busy');
+    });
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      recheckGuard: ProcessGuard(
+        FakeProcessRunner({
+          'pgrep -f /Applications/Install macOS Sequoia.app':
+              ProcessResult.success('123'),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '/Applications/Install macOS Sequoia.app',
+      section: 'System',
+      requiresPrivilegedDeletion: true,
+      recheckProcessGuard: const ProcessRecheck(
+        patterns: ['/Applications/Install macOS Sequoia.app'],
+      ),
+      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
+        expectedIdentity: '16777232:123456:1700000000',
+      ),
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+    final entries = readLog();
+    expect(entries.single['outcome'], 'refused');
+  });
+
+  test('refuses a privileged-deletion candidate whose identity changed since '
+      'it was found eligible', () async {
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      installerRecheckProbe: MacosInstallerProbe(
+        probe: FakeProcessRunner({
+          'stat -f%d:%i:%m /Applications/Install macOS Sequoia.app':
+              ProcessResult.success('16777232:999999:1700000001'),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '/Applications/Install macOS Sequoia.app',
+      section: 'System',
+      requiresPrivilegedDeletion: true,
+      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
+        expectedIdentity: '16777232:123456:1700000000',
+      ),
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+  });
+
+  test('refuses a privileged-deletion candidate when a software update is now '
+      'pending', () async {
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      installerRecheckProbe: MacosInstallerProbe(
+        probe: FakeProcessRunner({
+          'stat -f%d:%i:%m /Applications/Install macOS Sequoia.app':
+              ProcessResult.success('16777232:123456:1700000000'),
+          'plutil -extract RecommendedUpdates json -o - '
+                  '/Library/Preferences/com.apple.SoftwareUpdate.plist':
+              ProcessResult.success('[{"foo":"bar"}]'),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '/Applications/Install macOS Sequoia.app',
+      section: 'System',
+      requiresPrivilegedDeletion: true,
+      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
+        expectedIdentity: '16777232:123456:1700000000',
+        requireSoftwareUpdateNotPending: true,
+      ),
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, contains(candidate.path));
+  });
+
+  test('deletes a privileged-deletion candidate once its identity and '
+      'process-idle recheck both hold', () async {
+    messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+      return <Object?, Object?>{};
+    });
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      recheckGuard: ProcessGuard(
+        FakeProcessRunner({
+          'pgrep -f /Applications/Install macOS Sequoia.app':
+              ProcessResult.failure(ProcessFailure.nonZeroExit('pgrep', 1, '')),
+        }),
+      ),
+      installerRecheckProbe: MacosInstallerProbe(
+        probe: FakeProcessRunner({
+          'stat -f%d:%i:%m /Applications/Install macOS Sequoia.app':
+              ProcessResult.success('16777232:123456:1700000000'),
+          'plutil -extract RecommendedUpdates json -o - '
+                  '/Library/Preferences/com.apple.SoftwareUpdate.plist':
+              ProcessResult.success('[]'),
+        }),
+      ),
+    );
+    final candidate = CleanCandidate(
+      path: '/Applications/Install macOS Sequoia.app',
+      section: 'System',
+      requiresPrivilegedDeletion: true,
+      recheckProcessGuard: const ProcessRecheck(
+        patterns: ['/Applications/Install macOS Sequoia.app'],
+      ),
+      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
+        expectedIdentity: '16777232:123456:1700000000',
+        requireSoftwareUpdateNotPending: true,
+      ),
+    );
+
+    final failures = await repository.approve([candidate]);
+
+    expect(failures, isEmpty);
+    final entries = readLog();
+    expect(entries.single['outcome'], 'cleared');
+  });
 
   test('an empty owner command is a refusal, not a silent no-op', () async {
     final repository = CleanRepositoryImpl(home: home.path);

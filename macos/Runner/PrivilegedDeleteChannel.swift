@@ -76,15 +76,30 @@ final class PrivilegedDeleteChannel {
 
   private static func refusalReason(for path: String) -> String? {
     if let invalid = validate(path) { return invalid }
-    guard isWithinAllowedRoots(path) else {
+    guard isAllowedTarget(path) else {
       return "path is outside the allowed system-cleanup roots"
     }
     return nil
   }
 
-  private static func isWithinAllowedRoots(_ path: String) -> Bool {
+  private static func isAllowedTarget(_ path: String) -> Bool {
     let clean = (path as NSString).standardizingPath
-    return allowedRoots.contains { clean == $0 || clean.hasPrefix($0 + "/") }
+    if allowedRoots.contains(where: { clean == $0 || clean.hasPrefix($0 + "/") }) {
+      return true
+    }
+    return isMacOSInstallerApp(clean)
+  }
+
+  /// A stale macOS installer app Software Update itself stages under
+  /// `/Applications` (e.g. "Install macOS Sequoia.app") — named after the
+  /// release, so no exact path works the way `allowedRoots` does. Matched
+  /// on the exact basename shape only: one path component directly under
+  /// `/Applications`, never a subpath inside the bundle, and [clean] is
+  /// already standardized so `..` cannot forge this prefix.
+  private static func isMacOSInstallerApp(_ clean: String) -> Bool {
+    let prefix = "/Applications/Install macOS "
+    guard clean.hasPrefix(prefix), clean.hasSuffix(".app") else { return false }
+    return !clean.dropFirst(prefix.count).contains("/")
   }
 
   /// Rejects what should never be handed to a privileged delete: relative
