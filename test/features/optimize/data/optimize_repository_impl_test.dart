@@ -61,6 +61,8 @@ void main() {
       'quarantine_cleanup',
       'notification_cleanup',
       'coreduet_cleanup',
+      'shared_file_list_repair',
+      'fix_broken_configs',
     ]);
   });
 }

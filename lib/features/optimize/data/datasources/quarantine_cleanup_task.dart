@@ -23,10 +23,8 @@ import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 /// is kept faithful to Mole's source rather than dropped, so a future,
 /// more specific exception has somewhere to land.
 class QuarantineCleanupTask implements OptimizeTaskRunner {
-  QuarantineCleanupTask({
-    required this.home,
-    ProcessRunner? probe,
-  }) : _probe = probe ?? const ProcessRunner(timeout: Duration(seconds: 20));
+  QuarantineCleanupTask({required this.home, ProcessRunner? probe})
+    : _probe = probe ?? const ProcessRunner(timeout: Duration(seconds: 20));
 
   final String home;
   final ProcessRunner _probe;
@@ -76,7 +74,9 @@ class QuarantineCleanupTask implements OptimizeTaskRunner {
     ]);
     return OptimizeTaskResult(
       task: task,
-      outcome: clear.isSuccess ? OptimizeOutcome.applied : OptimizeOutcome.failed,
+      outcome: clear.isSuccess
+          ? OptimizeOutcome.applied
+          : OptimizeOutcome.failed,
     );
   }
 }

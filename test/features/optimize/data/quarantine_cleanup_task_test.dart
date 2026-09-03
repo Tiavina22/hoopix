@@ -58,21 +58,18 @@ void main() {
     expect(result.outcome, OptimizeOutcome.unchanged);
   });
 
-  test(
-    'unchanged when the database exists — its own com.apple.* filename '
-    'is protected, the same reason Mole\'s own opt_quarantine_cleanup '
-    'never actually clears it either',
-    () async {
-      await File(dbPath).create(recursive: true);
+  test('unchanged when the database exists — its own com.apple.* filename '
+      'is protected, the same reason Mole\'s own opt_quarantine_cleanup '
+      'never actually clears it either', () async {
+    await File(dbPath).create(recursive: true);
 
-      final result = await QuarantineCleanupTask(
-        home: home.path,
-        probe: FakeProcessRunner({
-          'sqlite3 -version': ProcessResult.success('3.43.0'),
-        }),
-      ).run();
+    final result = await QuarantineCleanupTask(
+      home: home.path,
+      probe: FakeProcessRunner({
+        'sqlite3 -version': ProcessResult.success('3.43.0'),
+      }),
+    ).run();
 
-      expect(result.outcome, OptimizeOutcome.unchanged);
-    },
-  );
+    expect(result.outcome, OptimizeOutcome.unchanged);
+  });
 }

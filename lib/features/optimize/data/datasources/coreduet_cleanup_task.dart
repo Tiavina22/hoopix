@@ -12,10 +12,8 @@ import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 /// `ZCREATIONDATE` is CoreData's own absolute-time epoch — seconds since
 /// 2001-01-01, not Unix time — hence the `strftime` offset in the delete.
 class CoreduetCleanupTask implements OptimizeTaskRunner {
-  CoreduetCleanupTask({
-    required this.home,
-    ProcessRunner? probe,
-  }) : _probe = probe ?? const ProcessRunner(timeout: Duration(seconds: 20));
+  CoreduetCleanupTask({required this.home, ProcessRunner? probe})
+    : _probe = probe ?? const ProcessRunner(timeout: Duration(seconds: 20));
 
   final String home;
   final ProcessRunner _probe;

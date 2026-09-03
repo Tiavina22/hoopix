@@ -16,8 +16,7 @@ void main() {
 
   setUp(() async {
     home = await Directory.systemTemp.createTemp('hoopix_coreduet_');
-    dbPath =
-        '${home.path}/Library/Application Support/Knowledge/knowledgeC.db';
+    dbPath = '${home.path}/Library/Application Support/Knowledge/knowledgeC.db';
   });
 
   tearDown(() async {
@@ -88,9 +87,10 @@ void main() {
       probe: FakeProcessRunner({
         'sqlite3 -version': ProcessResult.success('3.43.0'),
         "sqlite3 $dbPath DELETE FROM ZOBJECT WHERE ZCREATIONDATE < "
-                "(strftime('%s','now','-90 days') - strftime('%s','2001-01-01')); "
-                'VACUUM;':
-            ProcessResult.success(''),
+            "(strftime('%s','now','-90 days') - strftime('%s','2001-01-01')); "
+            'VACUUM;': ProcessResult.success(
+          '',
+        ),
       }),
     ).run();
 
@@ -107,11 +107,10 @@ void main() {
       probe: FakeProcessRunner({
         'sqlite3 -version': ProcessResult.success('3.43.0'),
         "sqlite3 $dbPath DELETE FROM ZOBJECT WHERE ZCREATIONDATE < "
-                "(strftime('%s','now','-90 days') - strftime('%s','2001-01-01')); "
-                'VACUUM;':
-            ProcessResult.failure(
-              ProcessFailure.nonZeroExit('sqlite3', 1, 'locked'),
-            ),
+            "(strftime('%s','now','-90 days') - strftime('%s','2001-01-01')); "
+            'VACUUM;': ProcessResult.failure(
+          ProcessFailure.nonZeroExit('sqlite3', 1, 'locked'),
+        ),
       }),
     ).run();
 

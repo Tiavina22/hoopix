@@ -58,16 +58,19 @@ void main() {
     expect(result.outcome, OptimizeOutcome.unavailable);
   });
 
-  test('unchanged when the resolved database is under the size threshold', () async {
-    await writeDb(groupContainerDb, 1024);
+  test(
+    'unchanged when the resolved database is under the size threshold',
+    () async {
+      await writeDb(groupContainerDb, 1024);
 
-    final result = await NotificationCleanupTask(
-      home: home.path,
-      probe: FakeProcessRunner(const {}),
-    ).run();
+      final result = await NotificationCleanupTask(
+        home: home.path,
+        probe: FakeProcessRunner(const {}),
+      ).run();
 
-    expect(result.outcome, OptimizeOutcome.unchanged);
-  });
+      expect(result.outcome, OptimizeOutcome.unchanged);
+    },
+  );
 
   test('cleans a large database and restarts NotificationCenter', () async {
     await writeDb(groupContainerDb, _bigContent);
@@ -77,8 +80,9 @@ void main() {
       probe: FakeProcessRunner({
         'sqlite3 -version': ProcessResult.success('3.43.0'),
         "sqlite3 $groupContainerDb DELETE FROM record WHERE delivered_date "
-                "< strftime('%s','now','-30 days'); VACUUM;":
-            ProcessResult.success(''),
+            "< strftime('%s','now','-30 days'); VACUUM;": ProcessResult.success(
+          '',
+        ),
         'killall NotificationCenter': ProcessResult.success(''),
       }),
     ).run();
@@ -99,8 +103,9 @@ void main() {
         ),
         'sqlite3 -version': ProcessResult.success('3.43.0'),
         "sqlite3 $legacyPath DELETE FROM record WHERE delivered_date < "
-                "strftime('%s','now','-30 days'); VACUUM;":
-            ProcessResult.success(''),
+            "strftime('%s','now','-30 days'); VACUUM;": ProcessResult.success(
+          '',
+        ),
         'killall NotificationCenter': ProcessResult.success(''),
       }),
     ).run();
@@ -116,10 +121,9 @@ void main() {
       probe: FakeProcessRunner({
         'sqlite3 -version': ProcessResult.success('3.43.0'),
         "sqlite3 $groupContainerDb DELETE FROM record WHERE delivered_date "
-                "< strftime('%s','now','-30 days'); VACUUM;":
-            ProcessResult.failure(
-              ProcessFailure.nonZeroExit('sqlite3', 1, 'locked'),
-            ),
+            "< strftime('%s','now','-30 days'); VACUUM;": ProcessResult.failure(
+          ProcessFailure.nonZeroExit('sqlite3', 1, 'locked'),
+        ),
       }),
     ).run();
 

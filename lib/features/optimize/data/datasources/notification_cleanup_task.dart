@@ -17,10 +17,8 @@ import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 /// `unavailable`, not `unchanged`: Mole added this distinction after a
 /// missed Sequoia path first looked like a healthy no-op (issue #1368).
 class NotificationCleanupTask implements OptimizeTaskRunner {
-  NotificationCleanupTask({
-    required this.home,
-    ProcessRunner? probe,
-  }) : _probe = probe ?? const ProcessRunner(timeout: Duration(seconds: 20));
+  NotificationCleanupTask({required this.home, ProcessRunner? probe})
+    : _probe = probe ?? const ProcessRunner(timeout: Duration(seconds: 20));
 
   final String home;
   final ProcessRunner _probe;
@@ -89,7 +87,9 @@ class NotificationCleanupTask implements OptimizeTaskRunner {
     final base = darwinDir.stdout?.trim();
     if (!darwinDir.isSuccess || base == null || base.isEmpty) return null;
 
-    final trimmed = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final trimmed = base.endsWith('/')
+        ? base.substring(0, base.length - 1)
+        : base;
     final legacyPath = '$trimmed/com.apple.notificationcenter/db2/db';
     if (FileSystemEntity.typeSync(legacyPath, followLinks: false) ==
         FileSystemEntityType.file) {
