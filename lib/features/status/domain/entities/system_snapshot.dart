@@ -1,4 +1,5 @@
 import 'package:hoopix/features/status/domain/entities/battery_status.dart';
+import 'package:hoopix/features/status/domain/entities/bluetooth_device.dart';
 import 'package:hoopix/features/status/domain/entities/cpu_status.dart';
 import 'package:hoopix/features/status/domain/entities/disk_status.dart';
 import 'package:hoopix/features/status/domain/entities/host_status.dart';
@@ -17,6 +18,7 @@ class SystemSnapshot {
     this.disks = const [],
     this.battery,
     this.network,
+    this.bluetoothDevices = const [],
   });
 
   final DateTime collectedAt;
@@ -26,4 +28,5 @@ class SystemSnapshot {
   final List<DiskStatus> disks;
   final BatteryStatus? battery;
   final NetworkStatus? network;
+  final List<BluetoothDevice> bluetoothDevices;
 }

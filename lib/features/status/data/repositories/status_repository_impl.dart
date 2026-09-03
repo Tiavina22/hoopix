@@ -1,5 +1,6 @@
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/status/data/datasources/battery_local_datasource.dart';
+import 'package:hoopix/features/status/data/datasources/bluetooth_local_datasource.dart';
 import 'package:hoopix/features/status/data/datasources/cpu_local_datasource.dart';
 import 'package:hoopix/features/status/data/datasources/disk_local_datasource.dart';
 import 'package:hoopix/features/status/data/datasources/host_local_datasource.dart';
@@ -22,7 +23,8 @@ class StatusRepositoryImpl implements StatusRepository {
       _disk = DiskLocalDataSource(processRunner),
       _battery = BatteryLocalDataSource(processRunner),
       _network = NetworkLocalDataSource(processRunner),
-      _host = HostLocalDataSource(processRunner);
+      _host = HostLocalDataSource(processRunner),
+      _bluetooth = BluetoothLocalDataSource(processRunner);
 
   /// Test-only seam: build with hand-picked datasources (e.g. wired to a
   /// fake [ProcessRunner]) instead of the default local ones.
@@ -33,12 +35,14 @@ class StatusRepositoryImpl implements StatusRepository {
     required BatteryLocalDataSource battery,
     required NetworkLocalDataSource network,
     required HostLocalDataSource host,
+    required BluetoothLocalDataSource bluetooth,
   }) : _cpu = cpu,
        _memory = memory,
        _disk = disk,
        _battery = battery,
        _network = network,
-       _host = host;
+       _host = host,
+       _bluetooth = bluetooth;
 
   final CpuLocalDataSource _cpu;
   final MemoryLocalDataSource _memory;
@@ -46,6 +50,7 @@ class StatusRepositoryImpl implements StatusRepository {
   final BatteryLocalDataSource _battery;
   final NetworkLocalDataSource _network;
   final HostLocalDataSource _host;
+  final BluetoothLocalDataSource _bluetooth;
 
   NetworkStatusModel? _previousNetwork;
   DateTime? _previousNetworkAt;
@@ -71,6 +76,7 @@ class StatusRepositoryImpl implements StatusRepository {
     final batteryFuture = _guard(_battery.fetch);
     final networkFuture = _guard(_network.fetch);
     final hostFuture = _guard(_host.fetch);
+    final bluetoothFuture = _guard(_bluetooth.fetch);
 
     final cpu = await cpuFuture;
     final memory = await memoryFuture;
@@ -78,6 +84,7 @@ class StatusRepositoryImpl implements StatusRepository {
     final battery = await batteryFuture;
     final network = _withRate(await networkFuture, now);
     final host = await hostFuture;
+    final bluetoothDevices = await bluetoothFuture ?? const [];
 
     return SystemSnapshot(
       collectedAt: now,
@@ -87,6 +94,7 @@ class StatusRepositoryImpl implements StatusRepository {
       battery: battery,
       network: network,
       host: host,
+      bluetoothDevices: bluetoothDevices,
     );
   }
 
@@ -110,8 +118,10 @@ class StatusRepositoryImpl implements StatusRepository {
           ((current.bytesReceived - previous.bytesReceived) / elapsedSeconds)
               .clamp(0, double.infinity),
       sendRateBytesPerSecond:
-          ((current.bytesSent - previous.bytesSent) / elapsedSeconds)
-              .clamp(0, double.infinity),
+          ((current.bytesSent - previous.bytesSent) / elapsedSeconds).clamp(
+            0,
+            double.infinity,
+          ),
     );
   }
 

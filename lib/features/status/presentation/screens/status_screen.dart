@@ -8,6 +8,7 @@ import 'package:hoopix/features/status/domain/repositories/status_repository.dar
 import 'package:hoopix/features/status/domain/usecases/watch_system_status.dart';
 import 'package:hoopix/features/status/presentation/state/status_controller.dart';
 import 'package:hoopix/features/status/presentation/widgets/battery_card.dart';
+import 'package:hoopix/features/status/presentation/widgets/bluetooth_card.dart';
 import 'package:hoopix/features/status/presentation/widgets/cpu_gauge.dart';
 import 'package:hoopix/features/status/presentation/widgets/disk_list.dart';
 import 'package:hoopix/features/status/presentation/widgets/host_summary.dart';
@@ -115,6 +116,8 @@ class _Dashboard extends StatelessWidget {
           ),
           const SizedBox(height: HoopixSpacing.lg),
           DiskList(disks: snapshot.disks),
+          const SizedBox(height: HoopixSpacing.lg),
+          BluetoothCard(devices: snapshot.bluetoothDevices),
         ],
       ),
     );

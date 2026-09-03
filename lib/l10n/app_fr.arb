@@ -115,5 +115,9 @@
   "batteryOnBattery": "Sur batterie",
   "batteryStateWithRemaining": "{state} · {remaining} restant",
 
+  "bluetoothCardTitle": "Bluetooth",
+  "noBluetoothDevicesConnected": "Aucun appareil connecté",
+  "bluetoothBatteryLevel": "{name} · {battery}",
+
   "unavailable": "Indisponible"
 }

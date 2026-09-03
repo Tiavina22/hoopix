@@ -280,5 +280,15 @@
     }
   },
 
+  "bluetoothCardTitle": "Bluetooth",
+  "noBluetoothDevicesConnected": "No devices connected",
+  "bluetoothBatteryLevel": "{name} · {battery}",
+  "@bluetoothBatteryLevel": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "battery": { "type": "String" }
+    }
+  },
+
   "unavailable": "Unavailable"
 }
