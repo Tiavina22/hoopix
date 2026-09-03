@@ -12,6 +12,7 @@ import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_c
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_probe.dart';
+import 'package:hoopix/features/clean/data/datasources/orphaned_system_services_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
@@ -652,6 +653,57 @@ void main() {
       MacosInstallerLocalDataSource.revalidatorKey,
     );
   });
+
+  test(
+    'the App leftovers section is merged with an orphaned system service',
+    () async {
+      final servicesRoot = await Directory.systemTemp.createTemp(
+        'hoopix_repo_orphan_services_',
+      );
+      addTearDown(() async {
+        if (servicesRoot.existsSync()) {
+          await servicesRoot.delete(recursive: true);
+        }
+      });
+      final daemons = Directory('${servicesRoot.path}/LaunchDaemons')
+        ..createSync();
+      final agents = Directory('${servicesRoot.path}/LaunchAgents')
+        ..createSync();
+      final helpers = Directory('${servicesRoot.path}/PrivilegedHelperTools')
+        ..createSync();
+      final plistPath = '${daemons.path}/com.example.orphan.plist';
+      await File(plistPath).create(recursive: true);
+
+      final responses = {
+        '/usr/libexec/PlistBuddy -c Print :ProgramArguments:0 $plistPath':
+            ProcessResult.success('/usr/local/opt/example/bin/example'),
+        "mdfind kMDItemCFBundleIdentifier == 'com.example.orphan'":
+            ProcessResult.success(''),
+      };
+
+      final repository = CleanRepositoryImpl(
+        home: home.path,
+        orphanedSystemServices: OrphanedSystemServicesLocalDataSource(
+          home: home.path,
+          probe: FakeProcessRunner(responses),
+          directory: (path) => switch (path) {
+            '/Library/LaunchDaemons' => daemons,
+            '/Library/LaunchAgents' => agents,
+            '/Library/PrivilegedHelperTools' => helpers,
+            _ => Directory(path),
+          },
+        ),
+      );
+      final plan = await repository.watchPlan().first;
+
+      final candidate = plan.candidates.singleWhere((c) => c.path == plistPath);
+      expect(candidate.requiresPrivilegedDeletion, isTrue);
+      expect(
+        candidate.revalidatorKey,
+        OrphanedSystemServicesLocalDataSource.revalidatorKey,
+      );
+    },
+  );
 
   test(
     'runs privileged deletion instead of moving its path to Trash',

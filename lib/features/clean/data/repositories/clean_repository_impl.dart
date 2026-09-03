@@ -18,6 +18,7 @@ import 'package:hoopix/features/clean/data/datasources/edge_updater_old_versions
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/orphaned_system_services_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/simulator_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_aged_sweeps_local_datasource.dart';
@@ -66,6 +67,7 @@ class CleanRepositoryImpl implements CleanRepository {
     AutodeskLocalDataSource? autodesk,
     SimulatorCachesLocalDataSource? simulatorCaches,
     SystemAgedSweepsLocalDataSource? systemAgedSweeps,
+    OrphanedSystemServicesLocalDataSource? orphanedSystemServices,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -115,6 +117,9 @@ class CleanRepositoryImpl implements CleanRepository {
            simulatorCaches ?? SimulatorCachesLocalDataSource(home: home),
        _systemAgedSweeps =
            systemAgedSweeps ?? SystemAgedSweepsLocalDataSource(),
+       _orphanedSystemServices =
+           orphanedSystemServices ??
+           OrphanedSystemServicesLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -144,6 +149,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final AutodeskLocalDataSource _autodesk;
   final SimulatorCachesLocalDataSource _simulatorCaches;
   final SystemAgedSweepsLocalDataSource _systemAgedSweeps;
+  final OrphanedSystemServicesLocalDataSource _orphanedSystemServices;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -188,6 +194,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _simulatorCaches.enumerate(),
           _system.enumerate(),
           _systemAgedSweeps.enumerate(),
+          await _orphanedSystemServices.enumerate(),
         ]);
 
     // Every row is named and grouped before any measuring, so the preview
@@ -349,6 +356,8 @@ class CleanRepositoryImpl implements CleanRepository {
     AutodeskLocalDataSource.revalidatorKey: _autodesk.stillEligible,
     SimulatorCachesLocalDataSource.revalidatorKey:
         _simulatorCaches.stillEligible,
+    OrphanedSystemServicesLocalDataSource.revalidatorKey:
+        _orphanedSystemServices.stillEligible,
   };
 
   /// Null when the user has no whitelist file, which is what selects the

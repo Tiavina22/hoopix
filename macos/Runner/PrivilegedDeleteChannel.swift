@@ -104,6 +104,12 @@ final class PrivilegedDeleteChannel {
     "/Library/Logs/Adobe",
     "/Library/Logs/CreativeCloud",
     "/private/var/log",
+    // Orphaned system services (clean_orphaned_system_services): a
+    // LaunchDaemon/LaunchAgent plist or a PrivilegedHelperTools file, one
+    // path component deep, never the directory itself.
+    "/Library/LaunchDaemons",
+    "/Library/LaunchAgents",
+    "/Library/PrivilegedHelperTools",
   ]
 
   private static let maximumSweepDepth = 5
