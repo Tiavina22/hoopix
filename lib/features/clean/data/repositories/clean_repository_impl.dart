@@ -20,6 +20,7 @@ import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_ca
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/simulator_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/system_aged_sweeps_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
@@ -64,6 +65,7 @@ class CleanRepositoryImpl implements CleanRepository {
     EdgeUpdaterOldVersionsLocalDataSource? edgeUpdaterOldVersions,
     AutodeskLocalDataSource? autodesk,
     SimulatorCachesLocalDataSource? simulatorCaches,
+    SystemAgedSweepsLocalDataSource? systemAgedSweeps,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -111,6 +113,8 @@ class CleanRepositoryImpl implements CleanRepository {
        _autodesk = autodesk ?? AutodeskLocalDataSource(home: home),
        _simulatorCaches =
            simulatorCaches ?? SimulatorCachesLocalDataSource(home: home),
+       _systemAgedSweeps =
+           systemAgedSweeps ?? SystemAgedSweepsLocalDataSource(),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -139,6 +143,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final EdgeUpdaterOldVersionsLocalDataSource _edgeUpdaterOldVersions;
   final AutodeskLocalDataSource _autodesk;
   final SimulatorCachesLocalDataSource _simulatorCaches;
+  final SystemAgedSweepsLocalDataSource _systemAgedSweeps;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -182,6 +187,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _autodesk.enumerate(),
           await _simulatorCaches.enumerate(),
           _system.enumerate(),
+          _systemAgedSweeps.enumerate(),
         ]);
 
     // Every row is named and grouped before any measuring, so the preview

@@ -56,7 +56,10 @@ final class PrivilegedDeleteChannel {
     }
 
     if !allowed.isEmpty {
-      let (succeeded, batchFailureReason) = runPrivilegedRemoval(of: allowed)
+      let recursive = allowed.filter { !isWithinSweepRoots($0) }
+      let filesOnly = allowed.filter { isWithinSweepRoots($0) }
+      let (succeeded, batchFailureReason) = runPrivilegedRemoval(
+        recursive: recursive, filesOnly: filesOnly)
       for path in allowed where !succeeded.contains(path) {
         failures[path] = batchFailureReason ?? "removal did not confirm success"
       }
@@ -82,12 +85,48 @@ final class PrivilegedDeleteChannel {
     return nil
   }
 
+  /// Roots whose *individual files* Mole's own `safe_sudo_find_delete`
+  /// sweeps by age and name (`clean_deep_system`, `lib/clean/system.sh`).
+  /// Unlike `allowedRoots`, a path here is never removed recursively: it is
+  /// deleted with `rm -f`, so a directory handed here fails instead of
+  /// taking a tree with it. Depth is capped at the same 5 levels the scan
+  /// contract allows, so no deeply nested path can be reached through one.
+  ///
+  /// Every root here is root-owned and not writable by the invoking user.
+  /// `/Library/Caches` is deliberately absent even though Mole sweeps it:
+  /// it is `drwxrwxrwt`, so a privileged path-based delete would cross an
+  /// ancestor the user can write, which is exactly what Mole's own
+  /// `_mole_privileged_path_has_mutable_ancestor` refuses — it downgrades
+  /// those to an unprivileged removal, and so does hoopix, by routing them
+  /// to the Trash instead of here.
+  private static let allowedSweepRoots = [
+    "/Library/Logs/DiagnosticReports",
+    "/Library/Logs/Adobe",
+    "/Library/Logs/CreativeCloud",
+    "/private/var/log",
+  ]
+
+  private static let maximumSweepDepth = 5
+
   private static func isAllowedTarget(_ path: String) -> Bool {
     let clean = (path as NSString).standardizingPath
     if allowedRoots.contains(where: { clean == $0 || clean.hasPrefix($0 + "/") }) {
       return true
     }
-    return isMacOSInstallerApp(clean)
+    if isMacOSInstallerApp(clean) { return true }
+    return isWithinSweepRoots(clean)
+  }
+
+  /// A path strictly below one of `allowedSweepRoots`, at most
+  /// `maximumSweepDepth` components down. The root itself never qualifies.
+  private static func isWithinSweepRoots(_ path: String) -> Bool {
+    let clean = (path as NSString).standardizingPath
+    guard
+      let root = allowedSweepRoots.first(where: { clean.hasPrefix($0 + "/") })
+    else { return false }
+    let relative = clean.dropFirst(root.count + 1)
+    let depth = relative.split(separator: "/").count
+    return depth >= 1 && depth <= maximumSweepDepth
   }
 
   /// A stale macOS installer app Software Update itself stages under
@@ -115,16 +154,28 @@ final class PrivilegedDeleteChannel {
     return nil
   }
 
-  /// Runs one `rm -rf` per path inside a single administrator-privileges
-  /// prompt, so approving several System items only asks once. Each
-  /// removed path is echoed back on stdout so success can still be
-  /// attributed per path. Returns the paths that were actually removed,
-  /// and — when the prompt was cancelled or the script itself could not
-  /// run — a message to attach to every path that did not succeed.
-  private static func runPrivilegedRemoval(of paths: [String]) -> (Set<String>, String?) {
-    let quotedList = paths.map(posixShellQuoted).joined(separator: " ")
-    let shellScript =
-      "for p in \(quotedList); do rm -rf -- \"$p\" && echo \"$p\"; done"
+  /// Runs the removals inside a single administrator-privileges prompt, so
+  /// approving several System items only asks once. [recursive] paths are
+  /// whole trees (`rm -rf`); [filesOnly] paths come from an age sweep and
+  /// are removed with `rm -f`, which fails on a directory rather than
+  /// taking one with it. Each removed path is echoed back on stdout so
+  /// success can still be attributed per path. Returns the paths that were
+  /// actually removed, and — when the prompt was cancelled or the script
+  /// itself could not run — a message to attach to every path that did not
+  /// succeed.
+  private static func runPrivilegedRemoval(
+    recursive: [String], filesOnly: [String]
+  ) -> (Set<String>, String?) {
+    var parts: [String] = []
+    if !recursive.isEmpty {
+      let quoted = recursive.map(posixShellQuoted).joined(separator: " ")
+      parts.append("for p in \(quoted); do rm -rf -- \"$p\" && echo \"$p\"; done")
+    }
+    if !filesOnly.isEmpty {
+      let quoted = filesOnly.map(posixShellQuoted).joined(separator: " ")
+      parts.append("for p in \(quoted); do rm -f -- \"$p\" && echo \"$p\"; done")
+    }
+    let shellScript = parts.joined(separator: "; ")
     let source =
       "do shell script \(appleScriptStringLiteral(for: shellScript)) with administrator privileges"
 
