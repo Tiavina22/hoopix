@@ -28,11 +28,10 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// two probes, to close the race a size measurement can open. hoopix's own
 /// gap is larger — every eligible candidate gets sized, then the user
 /// reviews the whole plan, before approval — so the full recheck happens
-/// once, at the true deletion boundary, via
-/// [CleanCandidate.recheckPrivilegedTarget] (file identity and Software
-/// Update state) alongside [CleanCandidate.recheckProcessGuard] (process
-/// liveness), both applied by `CleanRepositoryImpl` immediately before
-/// deleting.
+/// once, at the true deletion boundary: [stillEligible] re-reads the
+/// bundle's identity and Software Update's state, and
+/// [CleanCandidate.recheckProcessGuard] re-checks the installer process,
+/// both applied by `CleanRepositoryImpl` immediately before deleting.
 class MacosInstallerLocalDataSource {
   MacosInstallerLocalDataSource({
     MacosInstallerProbe? probe,
@@ -50,13 +49,21 @@ class MacosInstallerLocalDataSource {
 
   static const _minimumAgeDays = 14;
 
+  /// Names this datasource's own [stillEligible] to `CleanRepositoryImpl`,
+  /// through [CleanCandidate.revalidatorKey].
+  static const revalidatorKey = 'macos-installer';
+
+  /// The identity each proposed installer reported when it was found
+  /// eligible, so [stillEligible] can prove it is still the same bundle.
+  final _identitiesAtScan = <String, String>{};
+
   Future<CleanSectionTargets> enumerate() async {
     final currentMajor = await _probe.currentMajorVersion();
     if (currentMajor == null) return _empty();
 
     final paths = <String>[];
     final recheckProcessGuards = <String, ProcessRecheck>{};
-    final privilegedTargetRechecks = <String, PrivilegedTargetRecheck>{};
+    _identitiesAtScan.clear();
 
     for (final appPath in _candidateInstallers()) {
       final identity = await _probe.identity(appPath);
@@ -79,10 +86,7 @@ class MacosInstallerLocalDataSource {
 
       paths.add(appPath);
       recheckProcessGuards[appPath] = ProcessRecheck(patterns: [appPath]);
-      privilegedTargetRechecks[appPath] = PrivilegedTargetRecheck(
-        expectedIdentity: identity,
-        requireSoftwareUpdateNotPending: true,
-      );
+      _identitiesAtScan[appPath] = identity;
     }
 
     return CleanSectionTargets(
@@ -90,8 +94,20 @@ class MacosInstallerLocalDataSource {
       paths,
       privilegedDeletionPaths: paths.toSet(),
       recheckProcessGuards: recheckProcessGuards,
-      privilegedTargetRechecks: privilegedTargetRechecks,
+      revalidatorKeys: {for (final path in paths) path: revalidatorKey},
     );
+  }
+
+  /// Whether [path] is still the exact bundle this datasource found
+  /// eligible, with Software Update still reporting nothing pending. Both
+  /// can change between the scan and the user approving the plan, and both
+  /// are fail-closed: an unknown answer keeps the installer.
+  Future<bool> stillEligible(String path) async {
+    final expected = _identitiesAtScan[path];
+    if (expected == null) return false;
+    if (await _probe.identity(path) != expected) return false;
+    if (await _probe.softwareUpdatePending()) return false;
+    return true;
   }
 
   CleanSectionTargets _empty() =>

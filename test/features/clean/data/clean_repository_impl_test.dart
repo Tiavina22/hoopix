@@ -647,7 +647,10 @@ void main() {
       (c) => c.path == installerPath,
     );
     expect(candidate.requiresPrivilegedDeletion, isTrue);
-    expect(candidate.recheckPrivilegedTarget?.expectedIdentity, contains(':'));
+    expect(
+      candidate.revalidatorKey,
+      MacosInstallerLocalDataSource.revalidatorKey,
+    );
   });
 
   test(
@@ -745,136 +748,184 @@ void main() {
     },
   );
 
-  test('refuses a privileged-deletion candidate whose recheck guard finds the '
-      'installer process now running, without deleting it', () async {
-    messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
-      fail('privileged delete must not run once the recheck finds it busy');
+  group('privileged-deletion rechecks', () {
+    late Directory applications;
+
+    setUp(() async {
+      applications = await Directory.systemTemp.createTemp(
+        'hoopix_repo_installer_apps_',
+      );
+      await Directory(
+        '${applications.path}/Install macOS Sequoia.app',
+      ).create(recursive: true);
     });
 
-    final repository = CleanRepositoryImpl(
-      home: home.path,
-      recheckGuard: ProcessGuard(
-        FakeProcessRunner({
-          'pgrep -f /Applications/Install macOS Sequoia.app':
-              ProcessResult.success('123'),
-        }),
-      ),
-    );
-    final candidate = CleanCandidate(
-      path: '/Applications/Install macOS Sequoia.app',
-      section: 'System',
-      requiresPrivilegedDeletion: true,
-      recheckProcessGuard: const ProcessRecheck(
-        patterns: ['/Applications/Install macOS Sequoia.app'],
-      ),
-      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
-        expectedIdentity: '16777232:123456:1700000000',
-      ),
-    );
-
-    final failures = await repository.approve([candidate]);
-
-    expect(failures, contains(candidate.path));
-    final entries = readLog();
-    expect(entries.single['outcome'], 'refused');
-  });
-
-  test('refuses a privileged-deletion candidate whose identity changed since '
-      'it was found eligible', () async {
-    final repository = CleanRepositoryImpl(
-      home: home.path,
-      installerRecheckProbe: MacosInstallerProbe(
-        probe: FakeProcessRunner({
-          'stat -f%d:%i:%m /Applications/Install macOS Sequoia.app':
-              ProcessResult.success('16777232:999999:1700000001'),
-        }),
-      ),
-    );
-    final candidate = CleanCandidate(
-      path: '/Applications/Install macOS Sequoia.app',
-      section: 'System',
-      requiresPrivilegedDeletion: true,
-      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
-        expectedIdentity: '16777232:123456:1700000000',
-      ),
-    );
-
-    final failures = await repository.approve([candidate]);
-
-    expect(failures, contains(candidate.path));
-  });
-
-  test('refuses a privileged-deletion candidate when a software update is now '
-      'pending', () async {
-    final repository = CleanRepositoryImpl(
-      home: home.path,
-      installerRecheckProbe: MacosInstallerProbe(
-        probe: FakeProcessRunner({
-          'stat -f%d:%i:%m /Applications/Install macOS Sequoia.app':
-              ProcessResult.success('16777232:123456:1700000000'),
-          'plutil -extract RecommendedUpdates json -o - '
-                  '/Library/Preferences/com.apple.SoftwareUpdate.plist':
-              ProcessResult.success('[{"foo":"bar"}]'),
-        }),
-      ),
-    );
-    final candidate = CleanCandidate(
-      path: '/Applications/Install macOS Sequoia.app',
-      section: 'System',
-      requiresPrivilegedDeletion: true,
-      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
-        expectedIdentity: '16777232:123456:1700000000',
-        requireSoftwareUpdateNotPending: true,
-      ),
-    );
-
-    final failures = await repository.approve([candidate]);
-
-    expect(failures, contains(candidate.path));
-  });
-
-  test('deletes a privileged-deletion candidate once its identity and '
-      'process-idle recheck both hold', () async {
-    messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
-      return <Object?, Object?>{};
+    tearDown(() async {
+      if (applications.existsSync()) await applications.delete(recursive: true);
     });
 
-    final repository = CleanRepositoryImpl(
-      home: home.path,
-      recheckGuard: ProcessGuard(
-        FakeProcessRunner({
-          'pgrep -f /Applications/Install macOS Sequoia.app':
-              ProcessResult.failure(ProcessFailure.nonZeroExit('pgrep', 1, '')),
-        }),
-      ),
-      installerRecheckProbe: MacosInstallerProbe(
-        probe: FakeProcessRunner({
-          'stat -f%d:%i:%m /Applications/Install macOS Sequoia.app':
-              ProcessResult.success('16777232:123456:1700000000'),
-          'plutil -extract RecommendedUpdates json -o - '
-                  '/Library/Preferences/com.apple.SoftwareUpdate.plist':
-              ProcessResult.success('[]'),
-        }),
-      ),
-    );
-    final candidate = CleanCandidate(
-      path: '/Applications/Install macOS Sequoia.app',
-      section: 'System',
-      requiresPrivilegedDeletion: true,
-      recheckProcessGuard: const ProcessRecheck(
-        patterns: ['/Applications/Install macOS Sequoia.app'],
-      ),
-      recheckPrivilegedTarget: const PrivilegedTargetRecheck(
-        expectedIdentity: '16777232:123456:1700000000',
-        requireSoftwareUpdateNotPending: true,
-      ),
+    String installerPath() => '${applications.path}/Install macOS Sequoia.app';
+
+    /// Responses that make the installer eligible. Mutated in place by the
+    /// tests below to simulate state changing between scan and approval.
+    Map<String, ProcessResult> eligibleResponses() {
+      final oldMtime =
+          DateTime.now()
+              .subtract(const Duration(days: 20))
+              .millisecondsSinceEpoch ~/
+          1000;
+      return {
+        'sw_vers -productVersion': ProcessResult.success('15.6.1'),
+        'stat -f%d:%i:%m ${installerPath()}': ProcessResult.success(
+          '16777232:123456:$oldMtime',
+        ),
+        'plutil -extract RecommendedUpdates json -o - '
+                '/Library/Preferences/com.apple.SoftwareUpdate.plist':
+            ProcessResult.success('[]'),
+        'pgrep -f ${installerPath()}': ProcessResult.failure(
+          ProcessFailure.nonZeroExit('pgrep', 1, ''),
+        ),
+        '/usr/libexec/PlistBuddy -c Print :DTPlatformVersion '
+            '${installerPath()}/Contents/Info.plist': ProcessResult.success(
+          '14.0',
+        ),
+      };
+    }
+
+    /// Scans with [responses], returning the repository and the installer
+    /// candidate it found, so a test can mutate [responses] before
+    /// approving it.
+    Future<(CleanRepositoryImpl, CleanCandidate)> scan(
+      Map<String, ProcessResult> responses, {
+      ProcessGuard? recheckGuard,
+    }) async {
+      final repository = CleanRepositoryImpl(
+        home: home.path,
+        recheckGuard: recheckGuard,
+        macosInstaller: MacosInstallerLocalDataSource(
+          probe: MacosInstallerProbe(probe: FakeProcessRunner(responses)),
+          guard: ProcessGuard(FakeProcessRunner(responses)),
+          directory: (path) =>
+              path == '/Applications' ? applications : Directory(path),
+        ),
+      );
+      final plan = await repository.watchPlan().first;
+      final candidate = plan.candidates.singleWhere(
+        (c) => c.path == installerPath(),
+      );
+      return (repository, candidate);
+    }
+
+    test('refuses when the recheck guard finds the installer now running, '
+        'without deleting it', () async {
+      messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+        fail('privileged delete must not run once the recheck finds it busy');
+      });
+
+      final responses = eligibleResponses();
+      final (repository, candidate) = await scan(
+        responses,
+        recheckGuard: ProcessGuard(
+          FakeProcessRunner({
+            'pgrep -f ${installerPath()}': ProcessResult.success('123'),
+          }),
+        ),
+      );
+
+      final failures = await repository.approve([candidate]);
+
+      expect(failures, contains(candidate.path));
+      final entries = readLog();
+      expect(entries.single['outcome'], 'refused');
+    });
+
+    test(
+      'refuses when the installer identity changed since the scan',
+      () async {
+        messenger.setMockMethodCallHandler(privilegedDeleteChannel, (
+          call,
+        ) async {
+          fail('privileged delete must not run for a replaced bundle');
+        });
+
+        final responses = eligibleResponses();
+        final (repository, candidate) = await scan(responses);
+
+        // The updater replaced the bundle between scan and approval.
+        responses['stat -f%d:%i:%m ${installerPath()}'] = ProcessResult.success(
+          '16777232:999999:1700000001',
+        );
+
+        final failures = await repository.approve([candidate]);
+
+        expect(failures, contains(candidate.path));
+      },
     );
 
-    final failures = await repository.approve([candidate]);
+    test('refuses when a software update became pending', () async {
+      messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+        fail('privileged delete must not run with an update pending');
+      });
 
-    expect(failures, isEmpty);
-    final entries = readLog();
-    expect(entries.single['outcome'], 'cleared');
+      final responses = eligibleResponses();
+      final (repository, candidate) = await scan(responses);
+
+      responses['plutil -extract RecommendedUpdates json -o - '
+              '/Library/Preferences/com.apple.SoftwareUpdate.plist'] =
+          ProcessResult.success('[{"foo":"bar"}]');
+
+      final failures = await repository.approve([candidate]);
+
+      expect(failures, contains(candidate.path));
+    });
+
+    test(
+      'deletes once the revalidation and process recheck both hold',
+      () async {
+        final privilegedCalls = <MethodCall>[];
+        messenger.setMockMethodCallHandler(privilegedDeleteChannel, (
+          call,
+        ) async {
+          privilegedCalls.add(call);
+          return <Object?, Object?>{};
+        });
+
+        final responses = eligibleResponses();
+        final (repository, candidate) = await scan(responses);
+
+        final failures = await repository.approve([candidate]);
+
+        expect(failures, isEmpty);
+        expect(privilegedCalls.single.arguments, {
+          'paths': [installerPath()],
+        });
+        final entries = readLog();
+        expect(entries.single['outcome'], 'cleared');
+      },
+    );
+
+    test(
+      'refuses a candidate naming a revalidator that does not exist',
+      () async {
+        messenger.setMockMethodCallHandler(privilegedDeleteChannel, (
+          call,
+        ) async {
+          fail('privileged delete must not run for an unknown revalidator');
+        });
+
+        final repository = CleanRepositoryImpl(home: home.path);
+        final candidate = CleanCandidate(
+          path: '/Applications/Install macOS Sequoia.app',
+          section: 'System',
+          requiresPrivilegedDeletion: true,
+          revalidatorKey: 'not-a-real-revalidator',
+        );
+
+        final failures = await repository.approve([candidate]);
+
+        expect(failures, contains(candidate.path));
+      },
+    );
   });
 
   test('an empty owner command is a refusal, not a silent no-op', () async {

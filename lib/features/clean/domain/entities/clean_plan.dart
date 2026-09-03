@@ -23,32 +23,6 @@ class ProcessRecheck {
   final List<String> patterns;
 }
 
-/// What a privileged-deletion candidate whose target is a dynamically
-/// named, dynamically eligible file — not a fixed known-safe root — must
-/// reconfirm immediately before deletion, beyond process liveness. Mole's
-/// own macOS-installer eligibility check (`macos_installer_candidate_still_eligible`,
-/// `lib/clean/system.sh`) rechecks the file's own identity and Software
-/// Update's pending state between its two probes for the same reason: the
-/// window between scan and deletion can let the file change out from under
-/// the check, or Software Update start relying on it.
-class PrivilegedTargetRecheck {
-  const PrivilegedTargetRecheck({
-    required this.expectedIdentity,
-    this.requireSoftwareUpdateNotPending = false,
-  });
-
-  /// The `dev:inode:mtime` identity captured when this candidate was found
-  /// eligible. A path whose current identity no longer matches this exact
-  /// string was replaced, relaunched, or is no longer the same file, and
-  /// must not be deleted on the strength of the original scan.
-  final String expectedIdentity;
-
-  /// When true, Software Update must still report no pending update
-  /// immediately before deletion — a pending update starting between scan
-  /// and approval can make a previously-idle installer relevant again.
-  final bool requireSoftwareUpdateNotPending;
-}
-
 /// One path a section proposed, with what became of it.
 class CleanCandidate {
   const CleanCandidate({
@@ -59,7 +33,7 @@ class CleanCandidate {
     this.ownerCommand,
     this.requiresPrivilegedDeletion = false,
     this.recheckProcessGuard,
-    this.recheckPrivilegedTarget,
+    this.revalidatorKey,
   });
 
   final String path;
@@ -105,13 +79,19 @@ class CleanCandidate {
   /// mechanism has no such race in Mole either.
   final ProcessRecheck? recheckProcessGuard;
 
-  /// When set, this privileged-deletion candidate's own file identity (and
-  /// optionally Software Update's pending state) must be reconfirmed
-  /// immediately before deletion, on top of [recheckProcessGuard]. Null for
-  /// every fixed, known-safe privileged target — this only ever applies to
-  /// a dynamically discovered one, currently just stale macOS installer
-  /// apps.
-  final PrivilegedTargetRecheck? recheckPrivilegedTarget;
+  /// When set, names the datasource that must reconfirm this candidate's
+  /// full eligibility immediately before it is removed — everything beyond
+  /// process liveness that only the datasource which found it can re-check:
+  /// a file's own identity, Software Update's pending state, whether an
+  /// updater has switched which version is current. The repository resolves
+  /// the key to that datasource's own revalidation, so this stays a plain
+  /// domain value rather than a callback embedded in an entity.
+  ///
+  /// Mole runs the equivalent guard immediately before each of its own
+  /// removals (`macos_installer_candidate_still_eligible`,
+  /// `_autodesk_fusion_delete_guard_allows`). Null for a candidate whose
+  /// eligibility cannot drift between scan and approval.
+  final String? revalidatorKey;
 
   bool get isEligible => skipReason == null;
   bool get isOwnerCommand => ownerCommand != null;
@@ -129,7 +109,7 @@ class CleanCandidate {
     ownerCommand: ownerCommand,
     requiresPrivilegedDeletion: requiresPrivilegedDeletion,
     recheckProcessGuard: recheckProcessGuard,
-    recheckPrivilegedTarget: recheckPrivilegedTarget,
+    revalidatorKey: revalidatorKey,
   );
 }
 

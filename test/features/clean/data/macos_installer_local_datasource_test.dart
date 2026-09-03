@@ -87,12 +87,8 @@ void main() {
     expect(result.privilegedDeletionPaths, {path});
     expect(result.recheckProcessGuards[path]?.patterns, [path]);
     expect(
-      result.privilegedTargetRechecks[path]?.expectedIdentity,
-      '16777232:123456:$_oldMtime',
-    );
-    expect(
-      result.privilegedTargetRechecks[path]?.requireSoftwareUpdateNotPending,
-      isTrue,
+      result.revalidatorKeys[path],
+      MacosInstallerLocalDataSource.revalidatorKey,
     );
   });
 

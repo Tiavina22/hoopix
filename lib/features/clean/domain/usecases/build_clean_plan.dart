@@ -10,7 +10,7 @@ class CleanSectionTargets {
     this.paths, {
     this.ownerCommands = const {},
     this.recheckProcessGuards = const {},
-    this.privilegedTargetRechecks = const {},
+    this.revalidatorKeys = const {},
     this.privilegedDeletionPaths = const {},
   });
 
@@ -30,11 +30,11 @@ class CleanSectionTargets {
   /// Mole either; see [CleanCandidate.recheckProcessGuard].
   final Map<String, ProcessRecheck> recheckProcessGuards;
 
-  /// path -> what a privileged-deletion candidate for it must reconfirm
-  /// immediately before deletion, beyond process liveness. A path absent
-  /// here (every fixed, known-safe privileged target) carries none; see
-  /// [CleanCandidate.recheckPrivilegedTarget].
-  final Map<String, PrivilegedTargetRecheck> privilegedTargetRechecks;
+  /// path -> the datasource key that must reconfirm its full eligibility
+  /// immediately before removal. A path absent here has nothing that can
+  /// drift between scan and approval; see
+  /// [CleanCandidate.revalidatorKey].
+  final Map<String, String> revalidatorKeys;
 
   /// Paths that must be deleted through the administrator-privileges
   /// channel rather than a Trash move — the narrow, explicit set of
@@ -93,7 +93,7 @@ class BuildCleanPlan {
             ownerCommand: section.ownerCommands[path],
             requiresPrivilegedDeletion: privileged,
             recheckProcessGuard: section.recheckProcessGuards[path],
-            recheckPrivilegedTarget: section.privilegedTargetRechecks[path],
+            revalidatorKey: section.revalidatorKeys[path],
           ),
         );
       }

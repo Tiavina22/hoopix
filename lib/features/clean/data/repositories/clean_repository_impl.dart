@@ -8,6 +8,7 @@ import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/app_leftovers_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/apps_and_utilities_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/autodesk_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/chromium_old_versions_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/clean_sections_local_datasource.dart';
@@ -17,7 +18,6 @@ import 'package:hoopix/features/clean/data/datasources/edge_updater_old_versions
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
-import 'package:hoopix/features/clean/data/datasources/macos_installer_probe.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/system_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
@@ -61,6 +61,7 @@ class CleanRepositoryImpl implements CleanRepository {
     MacosInstallerLocalDataSource? macosInstaller,
     ChromiumOldVersionsLocalDataSource? chromiumOldVersions,
     EdgeUpdaterOldVersionsLocalDataSource? edgeUpdaterOldVersions,
+    AutodeskLocalDataSource? autodesk,
     SystemLocalDataSource system = const SystemLocalDataSource(),
     SizeProbe? sizeProbe,
     List<String>? Function(String home)? readWhitelist,
@@ -69,7 +70,6 @@ class CleanRepositoryImpl implements CleanRepository {
     OperationLog? log,
     ProcessRunner? ownerCommandRunner,
     ProcessGuard? recheckGuard,
-    MacosInstallerProbe? installerRecheckProbe,
   }) : _trash = trash,
        _privilegedDelete = privilegedDelete,
        _system = system,
@@ -106,8 +106,7 @@ class CleanRepositoryImpl implements CleanRepository {
        _edgeUpdaterOldVersions =
            edgeUpdaterOldVersions ??
            EdgeUpdaterOldVersionsLocalDataSource(home: home),
-       _installerRecheckProbe =
-           installerRecheckProbe ?? const MacosInstallerProbe(),
+       _autodesk = autodesk ?? AutodeskLocalDataSource(home: home),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _ownerCommandRunner =
@@ -134,7 +133,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final MacosInstallerLocalDataSource _macosInstaller;
   final ChromiumOldVersionsLocalDataSource _chromiumOldVersions;
   final EdgeUpdaterOldVersionsLocalDataSource _edgeUpdaterOldVersions;
-  final MacosInstallerProbe _installerRecheckProbe;
+  final AutodeskLocalDataSource _autodesk;
   final SystemLocalDataSource _system;
   final Trash _trash;
   final PrivilegedDelete _privilegedDelete;
@@ -175,6 +174,7 @@ class CleanRepositoryImpl implements CleanRepository {
           await _macosInstaller.enumerate(),
           await _chromiumOldVersions.enumerate(),
           await _edgeUpdaterOldVersions.enumerate(),
+          await _autodesk.enumerate(),
           _system.enumerate(),
         ]);
 
@@ -218,7 +218,9 @@ class CleanRepositoryImpl implements CleanRepository {
       if (candidate.isOwnerCommand || candidate.requiresPrivilegedDeletion) {
         continue;
       }
-      final failure = await _recheckFailure(candidate.recheckProcessGuard);
+      final failure =
+          await _recheckFailure(candidate.recheckProcessGuard) ??
+          await _revalidationFailure(candidate);
       if (failure != null) {
         failures[candidate.path] = failure;
       } else {
@@ -234,7 +236,7 @@ class CleanRepositoryImpl implements CleanRepository {
       if (!candidate.requiresPrivilegedDeletion) continue;
       final failure =
           await _recheckFailure(candidate.recheckProcessGuard) ??
-          await _privilegedTargetRecheckFailure(candidate);
+          await _revalidationFailure(candidate);
       if (failure != null) {
         failures[candidate.path] = failure;
       } else {
@@ -283,7 +285,9 @@ class CleanRepositoryImpl implements CleanRepository {
     final command = candidate.ownerCommand;
     if (command == null || command.isEmpty) return 'no command to run';
 
-    final recheckFailure = await _recheckFailure(candidate.recheckProcessGuard);
+    final recheckFailure =
+        await _recheckFailure(candidate.recheckProcessGuard) ??
+        await _revalidationFailure(candidate);
     if (recheckFailure != null) return recheckFailure;
 
     final result = await _ownerCommandRunner.run(
@@ -309,29 +313,29 @@ class CleanRepositoryImpl implements CleanRepository {
         : 'skipped: process state could not be confirmed';
   }
 
-  /// Null when [candidate] carries no [CleanCandidate.recheckPrivilegedTarget],
-  /// or its file identity and (when required) Software Update's state both
-  /// still match what made it eligible; otherwise a failure message. The
-  /// scan-time check that found this candidate eligible can be stale by the
-  /// time the user approves it — sizing it, then waiting on the user, both
-  /// happen after that check, exactly the window Mole's own second
-  /// eligibility probe exists to close.
-  Future<String?> _privilegedTargetRecheckFailure(
-    CleanCandidate candidate,
-  ) async {
-    final recheck = candidate.recheckPrivilegedTarget;
-    if (recheck == null) return null;
-
-    final identity = await _installerRecheckProbe.identity(candidate.path);
-    if (identity != recheck.expectedIdentity) {
-      return 'skipped: target changed since it was found eligible';
-    }
-    if (recheck.requireSoftwareUpdateNotPending &&
-        await _installerRecheckProbe.softwareUpdatePending()) {
-      return 'skipped: a software update is now pending';
-    }
-    return null;
+  /// Null when [candidate] names no revalidator, or the datasource that
+  /// found it still confirms it is eligible; otherwise a failure message.
+  /// The scan-time check that made this candidate eligible can be stale by
+  /// the time the user approves it — sizing every candidate, then waiting
+  /// on the user, both happen after that check, exactly the window Mole's
+  /// own pre-removal guards exist to close. A named revalidator that does
+  /// not exist refuses rather than passing silently.
+  Future<String?> _revalidationFailure(CleanCandidate candidate) async {
+    final key = candidate.revalidatorKey;
+    if (key == null) return null;
+    final revalidate = _revalidators[key];
+    if (revalidate == null) return 'skipped: no revalidator for "$key"';
+    return await revalidate(candidate.path)
+        ? null
+        : 'skipped: no longer eligible';
   }
+
+  /// Every datasource that owns a pre-removal eligibility recheck, by the
+  /// key its own candidates carry.
+  Map<String, Future<bool> Function(String path)> get _revalidators => {
+    MacosInstallerLocalDataSource.revalidatorKey: _macosInstaller.stillEligible,
+    AutodeskLocalDataSource.revalidatorKey: _autodesk.stillEligible,
+  };
 
   /// Null when the user has no whitelist file, which is what selects the
   /// convenience defaults rather than an empty list.
