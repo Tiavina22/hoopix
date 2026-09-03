@@ -58,6 +58,9 @@ void main() {
       'legacy_overrides_audit',
       'cache_refresh',
       'saved_state_cleanup',
+      'quarantine_cleanup',
+      'notification_cleanup',
+      'coreduet_cleanup',
     ]);
   });
 }
