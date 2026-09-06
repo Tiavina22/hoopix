@@ -66,6 +66,7 @@ void main() {
       'spotlight_orphan_rules_cleanup',
       'launch_services_rebuild',
       'launch_agents_cleanup',
+      'sqlite_vacuum',
     ]);
   });
 }

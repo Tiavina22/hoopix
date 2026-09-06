@@ -11,21 +11,23 @@ import 'package:hoopix/features/optimize/data/datasources/quarantine_cleanup_tas
 import 'package:hoopix/features/optimize/data/datasources/saved_state_cleanup_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/shared_file_list_repair_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/spotlight_orphan_rules_cleanup_task.dart';
+import 'package:hoopix/features/optimize/data/datasources/sqlite_vacuum_task.dart';
 import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 import 'package:hoopix/features/optimize/domain/repositories/optimize_repository.dart';
 
-/// Runs a fixed, ordered list of maintenance tasks — the no-admin-access
-/// slice of Mole's optimize catalog (`lib/optimize/catalog.sh`) ported so
-/// far. Every task here needs no `sudo` and touches only regenerable,
-/// user-owned state; the catalog's sudo-gated tasks (DNS/route flushing,
-/// permission repair, Spotlight reindex, `periodic`) need their own
-/// administrator-privileges channel and are not wired in yet. `disk_verify`
-/// is deliberately never ported: Mole itself ships it off by default,
-/// behind an undocumented env var, because `diskutil verifyVolume` can
-/// freeze the system on an APFS-inconsistent volume — the risk outweighs
-/// the value here too. `login_items_audit` needs Automation/Apple Events
-/// permission for `System Events`, a TCC-gated capability this app does not
-/// request; it stays out until that's deliberately added.
+/// Runs a fixed, ordered list of maintenance tasks — the complete
+/// no-admin-access slice of Mole's optimize catalog
+/// (`lib/optimize/catalog.sh`). Every task here needs no `sudo` and touches
+/// only regenerable, user-owned state; the catalog's sudo-gated tasks
+/// (DNS/route flushing, permission repair, Spotlight reindex, `periodic`)
+/// need their own administrator-privileges channel and are not wired in
+/// yet. `disk_verify` is deliberately never ported: Mole itself ships it
+/// off by default, behind an undocumented env var, because `diskutil
+/// verifyVolume` can freeze the system on an APFS-inconsistent volume — the
+/// risk outweighs the value here too. `login_items_audit` needs
+/// Automation/Apple Events permission for `System Events`, a TCC-gated
+/// capability this app does not request; it stays out until that's
+/// deliberately added.
 class OptimizeRepositoryImpl implements OptimizeRepository {
   OptimizeRepositoryImpl({
     required String home,
@@ -45,6 +47,7 @@ class OptimizeRepositoryImpl implements OptimizeRepository {
              SpotlightOrphanRulesCleanupTask(home: home),
              LaunchServicesRebuildTask(),
              LaunchAgentsCleanupTask(home: home),
+             SqliteVacuumTask(home: home),
            ];
 
   final List<OptimizeTaskRunner> _tasks;
