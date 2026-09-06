@@ -26,6 +26,7 @@ enum HoopixSection {
       this == HoopixSection.clean ||
       this == HoopixSection.optimize ||
       this == HoopixSection.status ||
+      this == HoopixSection.purge ||
       this == HoopixSection.settings;
 }
 

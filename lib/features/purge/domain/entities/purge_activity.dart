@@ -46,13 +46,19 @@ class PurgeActivityClassifier {
 
     if (type != FileSystemEntityType.directory) return PurgeActivityState.old;
 
-    return _probeForRecentFile(path, cutoff: now.subtract(Duration(days: ageDays)));
+    return _probeForRecentFile(
+      path,
+      cutoff: now.subtract(Duration(days: ageDays)),
+    );
   }
 
   /// Walks [path] looking for any file modified after [cutoff], stopping
   /// at the first hit — matching `find ... -print -quit` — and bounded by
   /// [_probeTimeout] so a pathological tree cannot hang classification.
-  PurgeActivityState _probeForRecentFile(String path, {required DateTime cutoff}) {
+  PurgeActivityState _probeForRecentFile(
+    String path, {
+    required DateTime cutoff,
+  }) {
     final deadline = DateTime.now().add(_probeTimeout);
     var timedOut = false;
     var foundRecent = false;

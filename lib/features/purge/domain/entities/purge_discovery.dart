@@ -17,8 +17,10 @@ import 'package:hoopix/features/purge/domain/entities/purge_container.dart';
 /// one directory discovered twice, not anything deleted twice, since
 /// discovery only proposes scan roots.
 class PurgeDiscovery {
-  PurgeDiscovery({required this.home, Directory Function(String path)? directory})
-    : _directory = directory ?? Directory.new;
+  PurgeDiscovery({
+    required this.home,
+    Directory Function(String path)? directory,
+  }) : _directory = directory ?? Directory.new;
 
   final String home;
   final Directory Function(String path) _directory;

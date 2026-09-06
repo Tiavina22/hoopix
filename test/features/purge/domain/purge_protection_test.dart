@@ -30,12 +30,15 @@ void main() {
       expect(isProtectedPurgeArtifact('${root.path}/app/bin'), isTrue);
     });
 
-    test('eligible when the parent is a .NET project with Debug/Release', () async {
-      await touch('app/App.csproj');
-      await mkdir('app/bin/Debug');
+    test(
+      'eligible when the parent is a .NET project with Debug/Release',
+      () async {
+        await touch('app/App.csproj');
+        await mkdir('app/bin/Debug');
 
-      expect(isProtectedPurgeArtifact('${root.path}/app/bin'), isFalse);
-    });
+        expect(isProtectedPurgeArtifact('${root.path}/app/bin'), isFalse);
+      },
+    );
 
     test('still protected without a Debug/Release subdirectory', () async {
       await touch('app/App.csproj');

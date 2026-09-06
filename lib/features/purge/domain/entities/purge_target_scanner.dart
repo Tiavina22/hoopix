@@ -26,7 +26,12 @@ class PurgeTargetScanner {
   final int minDepth;
   final int maxDepth;
 
-  static const excludedFromDescent = {'.git', 'Library', '.Trash', 'Applications'};
+  static const excludedFromDescent = {
+    '.git',
+    'Library',
+    '.Trash',
+    'Applications',
+  };
 
   List<String> scan(String root) {
     final found = <String>[];

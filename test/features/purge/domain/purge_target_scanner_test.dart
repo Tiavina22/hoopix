@@ -65,12 +65,12 @@ void main() {
   });
 
   test('finds a directory carrying a CACHEDIR.TAG', () async {
-    final cacheDir = await mkdir('project/.cache-root').then(
-      (_) => Directory('${root.path}/project/.cache-root'),
-    );
-    await File('${cacheDir.path}/CACHEDIR.TAG').writeAsString(
-      'Signature: 8a477f597d28d172789f06886806bc55',
-    );
+    final cacheDir = await mkdir(
+      'project/.cache-root',
+    ).then((_) => Directory('${root.path}/project/.cache-root'));
+    await File(
+      '${cacheDir.path}/CACHEDIR.TAG',
+    ).writeAsString('Signature: 8a477f597d28d172789f06886806bc55');
 
     final result = PurgeTargetScanner().scan(root.path);
 

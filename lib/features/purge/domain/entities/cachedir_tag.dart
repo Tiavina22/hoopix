@@ -25,9 +25,7 @@ bool hasCachedirTag(String dir) {
 
   try {
     final bytes = handle.readSync(cachedirTagSignature.length);
-    return const Utf8Decoder(
-          allowMalformed: true,
-        ).convert(bytes) ==
+    return const Utf8Decoder(allowMalformed: true).convert(bytes) ==
         cachedirTagSignature;
   } on FileSystemException {
     return false;

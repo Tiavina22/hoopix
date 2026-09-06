@@ -297,6 +297,53 @@
   "optimizeOutcomeAttention": "Needs attention",
   "optimizeOutcomeFailed": "Failed",
 
+  "purgeScanning": "Scanning your projects…",
+  "purgeNothingToDo": "No old project artifacts to clean.",
+  "purgeFailed": "Couldn’t work out what to purge: {error}",
+  "@purgeFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "purgeNoneSelected": "Nothing selected",
+  "purgeItemCount": "{count, plural, one{{count} item} other{{count} items}}",
+  "@purgeItemCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "purgeDeleteButton": "Delete Permanently",
+  "purgeWorking": "Deleting…",
+  "purgeIrreversibleHint": "Deleted permanently, not through the Trash — these are rebuildable build artifacts, not something to recover later.",
+  "purgeCloudSyncWarning": "Some selected items live in a cloud-synced folder. Removing them can also remove them from your other devices.",
+  "purgeConfirmTitle": "{count, plural, one{Permanently delete 1 item?} other{Permanently delete {count} items?}}",
+  "@purgeConfirmTitle": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "purgeConfirmBody": "Frees {size}. This cannot be undone — these are rebuildable project artifacts, not user data.",
+  "@purgeConfirmBody": {
+    "placeholders": {
+      "size": { "type": "String" }
+    }
+  },
+  "purgeCleared": "{count, plural, one{Deleted 1 item.} other{Deleted {count} items.}}",
+  "@purgeCleared": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "purgeRefused": "{count, plural, one{1 item could not be removed.} other{{count} items could not be removed.}}",
+  "@purgeRefused": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "purgeRecentBadge": "Recently touched",
+  "purgeUncertainBadge": "Recency unknown",
+  "purgeCloudBadge": "Cloud-synced",
+
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "No devices connected",
   "bluetoothBatteryLevel": "{name} · {battery}",

@@ -31,10 +31,7 @@ void main() {
 
   test('old when the path does not exist', () {
     final classifier = PurgeActivityClassifier();
-    expect(
-      classifier.classify('${root.path}/missing'),
-      PurgeActivityState.old,
-    );
+    expect(classifier.classify('${root.path}/missing'), PurgeActivityState.old);
   });
 
   test('recent when the top-level mtime is under the age floor', () async {
@@ -66,22 +63,19 @@ void main() {
     },
   );
 
-  test(
-    'recent when the top-level mtime is old but a nested file was just '
-    'touched — a directory\'s own mtime does not change when a deep file '
-    'is edited',
-    () async {
-      final dir = Directory('${root.path}/project')..createSync();
-      final nested = Directory('${dir.path}/src')..createSync();
-      File('${nested.path}/main.dart').createSync();
-      await backdate(dir, const Duration(days: 30));
-      await backdate(nested, const Duration(days: 30));
-      // freshFile keeps its just-created (recent) mtime.
+  test('recent when the top-level mtime is old but a nested file was just '
+      'touched — a directory\'s own mtime does not change when a deep file '
+      'is edited', () async {
+    final dir = Directory('${root.path}/project')..createSync();
+    final nested = Directory('${dir.path}/src')..createSync();
+    File('${nested.path}/main.dart').createSync();
+    await backdate(dir, const Duration(days: 30));
+    await backdate(nested, const Duration(days: 30));
+    // freshFile keeps its just-created (recent) mtime.
 
-      final classifier = PurgeActivityClassifier();
-      expect(classifier.classify(dir.path), PurgeActivityState.recent);
-    },
-  );
+    final classifier = PurgeActivityClassifier();
+    expect(classifier.classify(dir.path), PurgeActivityState.recent);
+  });
 
   test('uncertain when the probe cannot finish within its budget', () async {
     final dir = Directory('${root.path}/project')..createSync();

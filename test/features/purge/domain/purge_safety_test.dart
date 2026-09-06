@@ -48,22 +48,19 @@ void main() {
       );
     });
 
-    test(
-      'a direct child (depth 0) is safe only when the root is itself a '
-      'project root',
-      () async {
-        expect(
-          isSafeProjectArtifactUnderRoot('${root.path}/node_modules', root.path),
-          isFalse,
-        );
+    test('a direct child (depth 0) is safe only when the root is itself a '
+        'project root', () async {
+      expect(
+        isSafeProjectArtifactUnderRoot('${root.path}/node_modules', root.path),
+        isFalse,
+      );
 
-        await File('${root.path}/package.json').create();
-        expect(
-          isSafeProjectArtifactUnderRoot('${root.path}/node_modules', root.path),
-          isTrue,
-        );
-      },
-    );
+      await File('${root.path}/package.json').create();
+      expect(
+        isSafeProjectArtifactUnderRoot('${root.path}/node_modules', root.path),
+        isTrue,
+      );
+    });
 
     test('false when path is not under the root at all', () {
       expect(
@@ -80,10 +77,7 @@ void main() {
   group('isSafeProjectArtifact', () {
     test('lexically contained non-existent path is accepted at depth 1', () {
       expect(
-        isSafeProjectArtifact(
-          '${root.path}/project/node_modules',
-          root.path,
-        ),
+        isSafeProjectArtifact('${root.path}/project/node_modules', root.path),
         isTrue,
       );
     });
@@ -97,9 +91,7 @@ void main() {
 
     test('re-checks physically when both sides exist as directories', () async {
       final project = await Directory('${root.path}/project').create();
-      final artifact = await Directory(
-        '${project.path}/node_modules',
-      ).create();
+      final artifact = await Directory('${project.path}/node_modules').create();
 
       expect(isSafeProjectArtifact(artifact.path, root.path), isTrue);
     });
@@ -107,7 +99,9 @@ void main() {
     test(
       'a symlinked ancestor cannot lend authority over an unrelated tree',
       () async {
-        final scanRoot = await Directory('${root.path}/configured-root').create();
+        final scanRoot = await Directory(
+          '${root.path}/configured-root',
+        ).create();
         final artifact = await Directory(
           '${scanRoot.path}/decoy/node_modules',
         ).create(recursive: true);
@@ -127,21 +121,24 @@ void main() {
       },
     );
 
-    test('an OS alias still matches once both sides resolve physically', () async {
-      final varRoot = await Directory('${root.path}/var-style-root').create();
-      final artifact = await Directory(
-        '${varRoot.path}/project/node_modules',
-      ).create(recursive: true);
+    test(
+      'an OS alias still matches once both sides resolve physically',
+      () async {
+        final varRoot = await Directory('${root.path}/var-style-root').create();
+        final artifact = await Directory(
+          '${varRoot.path}/project/node_modules',
+        ).create(recursive: true);
 
-      // Both sides pick up the same "/private" alias prefix once resolved,
-      // the same shape /var -> /private/var takes on real macOS.
-      final result = isSafeProjectArtifact(
-        artifact.path,
-        varRoot.path,
-        resolvePhysicalPath: (path) => '/private$path',
-      );
+        // Both sides pick up the same "/private" alias prefix once resolved,
+        // the same shape /var -> /private/var takes on real macOS.
+        final result = isSafeProjectArtifact(
+          artifact.path,
+          varRoot.path,
+          resolvePhysicalPath: (path) => '/private$path',
+        );
 
-      expect(result, isTrue);
-    });
+        expect(result, isTrue);
+      },
+    );
   });
 }

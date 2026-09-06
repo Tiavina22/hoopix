@@ -24,9 +24,9 @@ void main() {
   });
 
   Future<Directory> backdatedNodeModules() async {
-    final project = await Directory('${home.path}/Code/myproject').create(
-      recursive: true,
-    );
+    final project = await Directory(
+      '${home.path}/Code/myproject',
+    ).create(recursive: true);
     await File('${project.path}/package.json').create();
     final artifact = await Directory(
       '${project.path}/node_modules',
@@ -63,7 +63,9 @@ void main() {
         'stat -f %d:%i ${artifact.path}': ProcessResult.success('1:200\n'),
       },
       duResponses: {
-        'du -skPx ${artifact.path}': ProcessResult.success('2048\t${artifact.path}'),
+        'du -skPx ${artifact.path}': ProcessResult.success(
+          '2048\t${artifact.path}',
+        ),
       },
     ).watchPlan().toList();
 
@@ -94,9 +96,9 @@ void main() {
   });
 
   test('never proposes a protected artifact (unrecognized vendor/)', () async {
-    final project = await Directory('${home.path}/Code/myproject').create(
-      recursive: true,
-    );
+    final project = await Directory(
+      '${home.path}/Code/myproject',
+    ).create(recursive: true);
     await File('${project.path}/package.json').create();
     await Directory('${project.path}/vendor').create();
 
@@ -172,9 +174,9 @@ void main() {
     });
 
     test('refuses a candidate that is now protected', () async {
-      final project = await Directory('${home.path}/Code/myproject').create(
-        recursive: true,
-      );
+      final project = await Directory(
+        '${home.path}/Code/myproject',
+      ).create(recursive: true);
       final vendor = await Directory('${project.path}/vendor').create();
       // No composer.json / go.mod / Rails markers: unrecognized owner,
       // protected by default even though it passed at scan time under a

@@ -60,8 +60,7 @@ bool isSafeProjectArtifact(
 
   final lexicallyContained = path.startsWith('$trimmedRoot/');
 
-  final bothExistAsDirs =
-      _isDirectory(path) && _isDirectory(trimmedRoot);
+  final bothExistAsDirs = _isDirectory(path) && _isDirectory(trimmedRoot);
   if (bothExistAsDirs) {
     final resolve = resolvePhysicalPath ?? _resolvePhysicalPath;
     final physicalPath = resolve(path);

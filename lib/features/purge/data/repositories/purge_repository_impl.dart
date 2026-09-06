@@ -82,10 +82,9 @@ class PurgeRepositoryImpl implements PurgeRepository {
     if (candidates.isEmpty) return;
 
     var sizes = {for (final c in candidates) c.path: c.sizeBytes};
-    await for (final probe in SizeProbe.pool(
-      [for (final c in candidates) c.path],
-      _sizeProbe.sizeOf,
-    )) {
+    await for (final probe in SizeProbe.pool([
+      for (final c in candidates) c.path,
+    ], _sizeProbe.sizeOf)) {
       sizes = {...sizes, probe.key: probe.sizeBytes};
       yield PurgePlan(
         candidates: [for (final c in candidates) c.withSize(sizes[c.path])],
@@ -124,7 +123,9 @@ class PurgeRepositoryImpl implements PurgeRepository {
     final type = FileSystemEntity.typeSync(candidate.path, followLinks: false);
     if (type == FileSystemEntityType.notFound) return 'no longer exists';
     if (type == FileSystemEntityType.link) return 'is now a symlink';
-    if (type != FileSystemEntityType.directory) return 'is no longer a directory';
+    if (type != FileSystemEntityType.directory) {
+      return 'is no longer a directory';
+    }
 
     if (!isSafeProjectArtifact(candidate.path, candidate.searchRoot)) {
       return 'no longer a safe purge target';

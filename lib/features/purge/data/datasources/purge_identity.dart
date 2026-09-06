@@ -34,7 +34,10 @@ class PurgeIdentity {
     final parent = _parentOf(path);
     final parentId = await identityOf(parent);
     final targetId = await identityOf(path);
-    return PurgeIdentitySnapshot(parentIdentity: parentId, targetIdentity: targetId);
+    return PurgeIdentitySnapshot(
+      parentIdentity: parentId,
+      targetIdentity: targetId,
+    );
   }
 
   /// Whether [path] still matches [expected] — re-stats both halves right

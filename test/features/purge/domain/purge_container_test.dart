@@ -47,17 +47,14 @@ void main() {
     }
   });
 
-  test(
-    'never treats a purge target as a container, even full of packages '
-    '(issue #1459): a stray ~/node_modules must not be scanned into as if '
-    'it were a project root',
-    () async {
-      final dir = await makeDir('node_modules');
-      await makeFile('node_modules/some-package/package.json');
+  test('never treats a purge target as a container, even full of packages '
+      '(issue #1459): a stray ~/node_modules must not be scanned into as if '
+      'it were a project root', () async {
+    final dir = await makeDir('node_modules');
+    await makeFile('node_modules/some-package/package.json');
 
-      expect(isProjectContainer(dir.path), isFalse);
-    },
-  );
+    expect(isProjectContainer(dir.path), isFalse);
+  });
 
   test('rejects every other purge target basename the same way', () async {
     for (final target in const ['vendor', 'Pods', 'target', 'dist', 'build']) {

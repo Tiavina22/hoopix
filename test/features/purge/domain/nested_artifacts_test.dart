@@ -8,7 +8,10 @@ void main() {
       '/b/project/target',
     ]);
 
-    expect(result, unorderedEquals(['/a/project/node_modules', '/b/project/target']));
+    expect(
+      result,
+      unorderedEquals(['/a/project/node_modules', '/b/project/target']),
+    );
   });
 
   test('collapses a nested artifact into its outermost ancestor', () {
@@ -32,12 +35,12 @@ void main() {
   });
 
   test('does not treat a sibling with a shared prefix as nested', () {
-    final result = filterNestedArtifacts(['/repo/build', '/repo/build-tools/dist']);
+    final result = filterNestedArtifacts([
+      '/repo/build',
+      '/repo/build-tools/dist',
+    ]);
 
-    expect(
-      result,
-      unorderedEquals(['/repo/build', '/repo/build-tools/dist']),
-    );
+    expect(result, unorderedEquals(['/repo/build', '/repo/build-tools/dist']));
   });
 
   test('is order-independent', () {

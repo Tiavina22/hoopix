@@ -40,18 +40,15 @@ void main() {
     expect(result, contains('${home.path}/MyStuff'));
   });
 
-  test(
-    'never discovers a purge target sitting directly under \$HOME '
-    '(issue #1459)',
-    () async {
-      await mkdir('node_modules');
-      await touch('node_modules/pkg/package.json');
+  test('never discovers a purge target sitting directly under \$HOME '
+      '(issue #1459)', () async {
+    await mkdir('node_modules');
+    await touch('node_modules/pkg/package.json');
 
-      final result = PurgeDiscovery(home: home.path).discover();
+    final result = PurgeDiscovery(home: home.path).discover();
 
-      expect(result, isNot(contains('${home.path}/node_modules')));
-    },
-  );
+    expect(result, isNot(contains('${home.path}/node_modules')));
+  });
 
   test('does not discover an ordinary non-project directory', () async {
     await mkdir('Desktop');
