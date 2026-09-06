@@ -24,7 +24,10 @@ class PrivilegedCommand {
   ///
   /// Returns null on success, or a failure message — a cancelled prompt,
   /// an unknown operation id, or the command's own failure.
-  Future<String?> run(String operation, {Map<String, String>? arguments}) async {
+  Future<String?> run(
+    String operation, {
+    Map<String, String>? arguments,
+  }) async {
     try {
       await channel.invokeMethod<void>('run', {
         'operation': operation,

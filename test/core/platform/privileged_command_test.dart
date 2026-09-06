@@ -13,25 +13,28 @@ void main() {
     messenger.setMockMethodCallHandler(channelDef, null);
   });
 
-  test('returns null on success and forwards the operation and arguments', () async {
-    MethodCall? received;
-    messenger.setMockMethodCallHandler(channelDef, (call) async {
-      received = call;
-      return null;
-    });
+  test(
+    'returns null on success and forwards the operation and arguments',
+    () async {
+      MethodCall? received;
+      messenger.setMockMethodCallHandler(channelDef, (call) async {
+        received = call;
+        return null;
+      });
 
-    final result = await const PrivilegedCommand().run(
-      'reset_user_permissions',
-      arguments: {'uid': '501'},
-    );
+      final result = await const PrivilegedCommand().run(
+        'reset_user_permissions',
+        arguments: {'uid': '501'},
+      );
 
-    expect(result, isNull);
-    expect(received?.method, 'run');
-    expect(received?.arguments, {
-      'operation': 'reset_user_permissions',
-      'arguments': {'uid': '501'},
-    });
-  });
+      expect(result, isNull);
+      expect(received?.method, 'run');
+      expect(received?.arguments, {
+        'operation': 'reset_user_permissions',
+        'arguments': {'uid': '501'},
+      });
+    },
+  );
 
   test('sends an empty arguments map when none is given', () async {
     MethodCall? received;

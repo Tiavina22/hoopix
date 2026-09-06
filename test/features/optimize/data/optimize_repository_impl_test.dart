@@ -50,7 +50,7 @@ void main() {
     ]);
   });
 
-  test('default construction wires the no-sudo task set', () {
+  test('default construction wires the full catalog, in order', () {
     final repository = OptimizeRepositoryImpl(home: '/tmp');
 
     expect(repository.catalog.map((t) => t.action), [
@@ -67,6 +67,14 @@ void main() {
       'launch_services_rebuild',
       'launch_agents_cleanup',
       'sqlite_vacuum',
+      // system_maintenance must precede network_optimization: they share
+      // one DnsFlushTracker, and only that order dedups the DNS flush.
+      'system_maintenance',
+      'network_optimization',
+      'network_stack_optimize',
+      'disk_permissions_repair',
+      'spotlight_index_optimize',
+      'periodic_maintenance',
     ]);
   });
 }
