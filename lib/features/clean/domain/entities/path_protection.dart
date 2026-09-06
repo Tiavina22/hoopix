@@ -16,7 +16,7 @@ import 'package:hoopix/features/clean/domain/entities/shell_glob.dart';
 bool shouldProtectPath(String path, {required String home}) {
   if (path.isEmpty) return false;
 
-  if (_isSharedHomeStateRoot(path, home)) return true;
+  if (isSharedHomeStateRoot(path, home)) return true;
 
   // Codex Desktop keeps durable state under Application Support, but these
   // exact Chromium cache leaves are rebuildable. Only their children are
@@ -393,7 +393,12 @@ bool isEndpointSecurityCachePath(String path) {
 /// one of these with different casing and still resolve to the same
 /// directory on a case-insensitive volume. The roots are protected; their
 /// app-specific children (`~/.config/zed`) are not.
-bool _isSharedHomeStateRoot(String path, String home) {
+///
+/// Public (not `_`-prefixed) because Uninstall's own leftover-path
+/// generation reuses this exact same guard — `find_app_files` and
+/// `should_protect_path` both call `_mole_is_shared_home_state_root` in
+/// Mole's own shell source.
+bool isSharedHomeStateRoot(String path, String home) {
   final trimmed = path.endsWith('/')
       ? path.substring(0, path.length - 1)
       : path;
