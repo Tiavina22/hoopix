@@ -344,6 +344,29 @@
   "purgeUncertainBadge": "Recency unknown",
   "purgeCloudBadge": "Cloud-synced",
 
+  "uninstallScanning": "Looking for installed apps…",
+  "uninstallNothingFound": "No apps found.",
+  "uninstallFailed": "Couldn’t list installed apps: {error}",
+  "@uninstallFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "uninstallAppCount": "{count, plural, one{{count} app} other{{count} apps}}",
+  "@uninstallAppCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "uninstallLeftoverCount": "{count, plural, one{1 leftover file} other{{count} leftover files}}",
+  "@uninstallLeftoverCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "uninstallSharedInstallBadge": "Shared install",
+  "uninstallReadOnlyHint": "Review-only for now — nothing here removes an app yet.",
+
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "No devices connected",
   "bluetoothBatteryLevel": "{name} · {battery}",

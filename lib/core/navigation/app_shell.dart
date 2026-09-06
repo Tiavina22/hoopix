@@ -6,17 +6,19 @@ import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/theme/theme_controller.dart';
-import 'package:hoopix/core/widgets/placeholder_screen.dart';
 import 'package:hoopix/features/analyze/presentation/screens/analyze_screen.dart';
 import 'package:hoopix/features/clean/presentation/screens/clean_screen.dart';
 import 'package:hoopix/features/optimize/presentation/screens/optimize_screen.dart';
 import 'package:hoopix/features/purge/presentation/screens/purge_screen.dart';
 import 'package:hoopix/features/settings/presentation/screens/settings_screen.dart';
 import 'package:hoopix/features/status/presentation/screens/status_screen.dart';
+import 'package:hoopix/features/uninstall/presentation/screens/uninstall_screen.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
-/// Sidebar + content shell. Sections with a feature module behind them
-/// render it; the rest render [PlaceholderScreen] until they have one.
+/// Sidebar + content shell. Every [HoopixSection] renders its own feature
+/// module; a section with no module yet falls back to [PlaceholderScreen]
+/// (`core/widgets/placeholder_screen.dart`), the same pattern used while
+/// this screen's own module was being built.
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
@@ -64,11 +66,11 @@ class _AppShellState extends State<AppShell> {
       HoopixSection.optimize => const OptimizeScreen(),
       HoopixSection.purge => const PurgeScreen(),
       HoopixSection.status => const StatusScreen(),
+      HoopixSection.uninstall => const UninstallScreen(),
       HoopixSection.settings => SettingsScreen(
         themeController: widget.themeController,
         localeController: widget.localeController,
       ),
-      _ => PlaceholderScreen(section: section),
     };
   }
 }

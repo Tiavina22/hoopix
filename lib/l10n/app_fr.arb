@@ -144,6 +144,14 @@
   "purgeUncertainBadge": "Récence inconnue",
   "purgeCloudBadge": "Synchronisé cloud",
 
+  "uninstallScanning": "Recherche des applications installées…",
+  "uninstallNothingFound": "Aucune application trouvée.",
+  "uninstallFailed": "Impossible de lister les applications installées : {error}",
+  "uninstallAppCount": "{count, plural, one{{count} application} other{{count} applications}}",
+  "uninstallLeftoverCount": "{count, plural, one{1 fichier résiduel} other{{count} fichiers résiduels}}",
+  "uninstallSharedInstallBadge": "Installation partagée",
+  "uninstallReadOnlyHint": "Pour l’instant en lecture seule — rien ici ne supprime encore une application.",
+
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "Aucun appareil connecté",
   "bluetoothBatteryLevel": "{name} · {battery}",
