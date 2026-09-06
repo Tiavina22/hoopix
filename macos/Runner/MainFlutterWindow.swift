@@ -8,6 +8,7 @@ class MainFlutterWindow: NSWindow {
   private var trashChannel: TrashChannel?
   private var scanChannel: DirectoryScanChannel?
   private var privilegedDeleteChannel: PrivilegedDeleteChannel?
+  private var privilegedCommandChannel: PrivilegedCommandChannel?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -39,6 +40,8 @@ class MainFlutterWindow: NSWindow {
     scanChannel = DirectoryScanChannel(
       messenger: flutterViewController.engine.binaryMessenger)
     privilegedDeleteChannel = PrivilegedDeleteChannel(
+      messenger: flutterViewController.engine.binaryMessenger)
+    privilegedCommandChannel = PrivilegedCommandChannel(
       messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
