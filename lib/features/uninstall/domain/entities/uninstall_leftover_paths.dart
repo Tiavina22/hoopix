@@ -41,7 +41,7 @@ List<String> uninstallLeftoverPathCandidates({
     candidates.addAll(_compoundNamePatterns(home, appName));
   }
 
-  final baseName = _stripVersionSuffix(appName);
+  final baseName = stripVersionSuffix(appName);
   if (baseName != appName && baseName.length > 2) {
     candidates.addAll(_baseNamePatterns(home, baseName));
   }
@@ -153,12 +153,16 @@ List<String> _baseNamePatterns(String home, String baseName) {
 
 /// Extracts a base name by removing a trailing version/channel word —
 /// `"Zed Nightly"` → `"Zed"`, `"Firefox Developer Edition"` → `"Firefox"`.
+/// Public because [SiblingGuardLevel]'s own name-collision check
+/// (`sibling_guard.dart`) needs the identical rule: the two must agree on
+/// what counts as "the same app family" for the sibling guard and
+/// leftover discovery to stay consistent with each other.
 final _versionSuffix = RegExp(
   r'^(.+)\s+(Nightly|Beta|Alpha|Dev|Canary|Preview|Insider|Edge|Stable|'
   r'Release|RC|LTS|Developer Edition|Technology Preview)$',
 );
 
-String _stripVersionSuffix(String appName) {
+String stripVersionSuffix(String appName) {
   final match = _versionSuffix.firstMatch(appName);
   return match?.group(1) ?? appName;
 }
