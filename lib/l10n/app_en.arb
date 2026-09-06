@@ -365,7 +365,34 @@
     }
   },
   "uninstallSharedInstallBadge": "Shared install",
-  "uninstallReadOnlyHint": "Review-only for now — nothing here removes an app yet.",
+  "uninstallHint": "Moves the app bundle and its known leftover files to the Trash. Launch services, login items, and Homebrew casks aren’t handled yet.",
+  "uninstallNoneSelected": "Nothing selected",
+  "uninstallButtonLabel": "Uninstall",
+  "uninstallWorking": "Uninstalling…",
+  "uninstallConfirmTitle": "{count, plural, one{Uninstall 1 app?} other{Uninstall {count} apps?}}",
+  "@uninstallConfirmTitle": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "uninstallConfirmBody": "Moves the app bundle and its known leftover files to the Trash. Frees {size}. You can put everything back from the Trash.",
+  "@uninstallConfirmBody": {
+    "placeholders": {
+      "size": { "type": "String" }
+    }
+  },
+  "uninstallTrashed": "{count, plural, one{Uninstalled 1 app.} other{Uninstalled {count} apps.}}",
+  "@uninstallTrashed": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "uninstallTrashRefused": "{count, plural, one{1 item could not be removed.} other{{count} items could not be removed.}}",
+  "@uninstallTrashRefused": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
 
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "No devices connected",

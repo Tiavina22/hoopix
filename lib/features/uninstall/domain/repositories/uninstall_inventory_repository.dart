@@ -1,16 +1,24 @@
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
 
-/// Deliberately read-only: installed apps, their leftover files, and their
-/// sizes, for review — there is no approve/delete method here, unlike
-/// Clean and Purge's own repositories. Teardown needs the shared-bundle-id
-/// sibling guard, launch services/login item cleanup, and brew cask
-/// routing landing together as one unit, per the safety review this
-/// command's port started from; adding deletion here piecemeal would ship
-/// a path that bypasses that guard.
+/// Installed apps, their leftover files, and their sizes, for review, plus
+/// the app-bundle-and-known-leftovers removal [approve] performs.
+///
+/// [approve] never trusts the inventory that produced [approved]: it
+/// re-scans for a live same-bundle-id sibling and re-discovers leftovers
+/// immediately before deleting anything, the same "never trust the preview
+/// window" contract Clean and Purge's own repositories already keep.
+///
+/// Launch services/login item teardown and brew cask routing are not part
+/// of this contract yet — each is its own separate, higher-risk port.
 abstract class UninstallInventoryRepository {
   /// Every installed app this scan reaches, with its leftover files
   /// already found, emitted first without sizes measured, then again as
   /// each one's size lands — the same progressive-sizing shape Clean and
   /// Purge's own plans use.
   Stream<List<InstalledApp>> watchInventory();
+
+  /// Removes each of [approved] — its app bundle and its exact known
+  /// leftover files — to the Trash. Returns the paths that did not go,
+  /// mapped to why; an empty map means everything moved.
+  Future<Map<String, String>> approve(List<InstalledApp> approved);
 }

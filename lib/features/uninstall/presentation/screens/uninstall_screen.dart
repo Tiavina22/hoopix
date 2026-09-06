@@ -10,15 +10,19 @@ import 'package:hoopix/features/uninstall/data/repositories/uninstall_inventory_
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
 import 'package:hoopix/features/uninstall/domain/entities/sibling_guard.dart';
 import 'package:hoopix/features/uninstall/domain/repositories/uninstall_inventory_repository.dart';
+import 'package:hoopix/features/uninstall/domain/usecases/approve_uninstall.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/watch_uninstall_inventory.dart';
 import 'package:hoopix/features/uninstall/presentation/state/uninstall_controller.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
-/// Installed apps, their leftover files, and their sizes — review-only for
-/// now. There is deliberately no delete button here: teardown needs launch
-/// services, login items, and the live sibling guard's actual gate landing
-/// together as one reviewed unit, per [UninstallInventoryRepository]'s own
-/// contract.
+/// Installed apps, their leftover files, and their sizes. Approving what's
+/// checked moves each app's bundle and its exact known leftovers to the
+/// Trash — gated by a fresh live same-bundle-id sibling re-scan and fresh
+/// leftover re-discovery immediately before anything is removed, never the
+/// possibly-stale list this screen shows.
+///
+/// Launch services/login item teardown and Homebrew cask routing are not
+/// part of this pass yet — each is its own separate, higher-risk port.
 class UninstallScreen extends StatefulWidget {
   const UninstallScreen({super.key, this.repository, this.homePath});
 
@@ -41,14 +45,46 @@ class _UninstallScreenState extends State<UninstallScreen> {
         Directory.systemTemp.path;
     final repository =
         widget.repository ?? UninstallInventoryRepositoryImpl(home: home);
-    _controller = UninstallController(WatchUninstallInventory(repository))
-      ..start();
+    _controller = UninstallController(
+      WatchUninstallInventory(repository),
+      ApproveUninstall(repository),
+    )..start();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Nothing moves until the user confirms which apps, and only what they
+  /// left checked is on offer.
+  Future<void> _confirmAndUninstall() async {
+    final l10n = AppLocalizations.of(context)!;
+    final selected = _controller.selectedApps;
+    if (selected.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _UninstallConfirmationDialog(
+        count: selected.length,
+        sizeBytes: _controller.selectedReclaimableBytes,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final failures = await _controller.approve();
+    if (messenger == null) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          failures.isNotEmpty
+              ? l10n.uninstallTrashRefused(failures.length)
+              : l10n.uninstallTrashed(selected.length),
+        ),
+      ),
+    );
   }
 
   @override
@@ -65,7 +101,7 @@ class _UninstallScreenState extends State<UninstallScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(controller: _controller),
+            _Header(controller: _controller, onUninstall: _confirmAndUninstall),
             const SizedBox(height: HoopixSpacing.lg),
             Expanded(child: _Body(controller: _controller)),
           ],
@@ -76,15 +112,17 @@ class _UninstallScreenState extends State<UninstallScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.controller});
+  const _Header({required this.controller, required this.onUninstall});
 
   final UninstallController controller;
+  final VoidCallback onUninstall;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final l10n = AppLocalizations.of(context)!;
     final apps = controller.apps;
+    final selected = controller.selectedApps;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -99,23 +137,79 @@ class _Header extends StatelessWidget {
                 color: palette.labelPrimary,
               ),
             ),
+            const SizedBox(width: HoopixSpacing.md),
             if (apps != null && apps.isNotEmpty) ...[
-              const SizedBox(width: HoopixSpacing.md),
+              _MasterCheckbox(controller: controller),
+              const SizedBox(width: HoopixSpacing.xs),
               Text(
-                l10n.uninstallAppCount(apps.length),
+                selected.isEmpty
+                    ? l10n.uninstallNoneSelected
+                    : '${l10n.uninstallAppCount(selected.length)}'
+                          ' · ${formatBytes(controller.selectedReclaimableBytes)}',
                 style: HoopixType.callout.copyWith(
                   color: palette.labelTertiary,
                 ),
               ),
             ],
+            const Spacer(),
+            FilledButton(
+              onPressed: controller.canApprove ? onUninstall : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.brand,
+                disabledBackgroundColor: palette.surfaceSubtle,
+                foregroundColor: Colors.white,
+                disabledForegroundColor: palette.labelTertiary,
+                textStyle: HoopixType.body,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(
+                controller.isRemoving
+                    ? l10n.uninstallWorking
+                    : l10n.uninstallButtonLabel,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: HoopixSpacing.xs),
         Text(
-          l10n.uninstallReadOnlyHint,
+          l10n.uninstallHint,
           style: HoopixType.callout.copyWith(color: palette.labelSecondary),
         ),
       ],
+    );
+  }
+}
+
+/// Tri-state checkbox for the whole list: checked when every app is
+/// selected, unchecked when none are, indeterminate in between. Toggling
+/// from either unchecked or indeterminate selects everything.
+class _MasterCheckbox extends StatelessWidget {
+  const _MasterCheckbox({required this.controller});
+
+  final UninstallController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final apps = controller.apps ?? const [];
+    final selectedCount = controller.selectedApps.length;
+    final value = selectedCount == 0
+        ? false
+        : selectedCount == apps.length
+        ? true
+        : null;
+
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: Checkbox(
+        value: value,
+        tristate: true,
+        activeColor: palette.brand,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        onChanged: (_) => controller.setAllSelected(value != true),
+      ),
     );
   }
 }
@@ -167,6 +261,7 @@ class _Body extends StatelessWidget {
         final app = sorted[index];
         return _AppCard(
           app: app,
+          controller: controller,
           hasSharedInstall: bundleIdHasSurvivingSibling(
             bundleId: app.bundleId,
             appPath: app.path,
@@ -180,9 +275,14 @@ class _Body extends StatelessWidget {
 }
 
 class _AppCard extends StatelessWidget {
-  const _AppCard({required this.app, required this.hasSharedInstall});
+  const _AppCard({
+    required this.app,
+    required this.controller,
+    required this.hasSharedInstall,
+  });
 
   final InstalledApp app;
+  final UninstallController controller;
   final bool hasSharedInstall;
 
   @override
@@ -196,30 +296,53 @@ class _AppCard extends StatelessWidget {
         app.sizeBytes == null ? '—' : formatBytes(app.sizeBytes!),
         style: HoopixType.callout.copyWith(color: palette.labelTertiary),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            app.path,
-            overflow: TextOverflow.ellipsis,
-            style: HoopixType.callout.copyWith(color: palette.labelSecondary),
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: Checkbox(
+              value: controller.isSelected(app.path),
+              activeColor: palette.brand,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              onChanged: (_) => controller.toggle(app.path),
+            ),
           ),
-          const SizedBox(height: HoopixSpacing.xs),
-          Wrap(
-            spacing: HoopixSpacing.xs,
-            runSpacing: HoopixSpacing.xs,
-            children: [
-              if (app.leftoverPaths.isNotEmpty)
-                _Badge(
-                  text: l10n.uninstallLeftoverCount(app.leftoverPaths.length),
-                  color: palette.labelTertiary,
+          const SizedBox(width: HoopixSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  app.path,
+                  overflow: TextOverflow.ellipsis,
+                  style: HoopixType.callout.copyWith(
+                    color: palette.labelSecondary,
+                  ),
                 ),
-              if (hasSharedInstall)
-                _Badge(
-                  text: l10n.uninstallSharedInstallBadge,
-                  color: palette.brand,
+                const SizedBox(height: HoopixSpacing.xs),
+                Wrap(
+                  spacing: HoopixSpacing.xs,
+                  runSpacing: HoopixSpacing.xs,
+                  children: [
+                    if (app.leftoverPaths.isNotEmpty)
+                      _Badge(
+                        text: l10n.uninstallLeftoverCount(
+                          app.leftoverPaths.length,
+                        ),
+                        color: palette.labelTertiary,
+                      ),
+                    if (hasSharedInstall)
+                      _Badge(
+                        text: l10n.uninstallSharedInstallBadge,
+                        color: palette.brand,
+                      ),
+                  ],
                 ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -266,6 +389,49 @@ class _Notice extends StatelessWidget {
         style: HoopixType.body.copyWith(color: palette.labelSecondary),
         textAlign: TextAlign.center,
       ),
+    );
+  }
+}
+
+/// Names what is about to move and where it goes — Trash, not permanent
+/// deletion, and recoverable from there, for every path this pass ever
+/// touches.
+class _UninstallConfirmationDialog extends StatelessWidget {
+  const _UninstallConfirmationDialog({
+    required this.count,
+    required this.sizeBytes,
+  });
+
+  final int count;
+  final int sizeBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
+
+    return AlertDialog(
+      backgroundColor: palette.surface,
+      title: Text(
+        l10n.uninstallConfirmTitle(count),
+        style: HoopixType.title.copyWith(color: palette.labelPrimary),
+      ),
+      content: Text(
+        l10n.uninstallConfirmBody(formatBytes(sizeBytes)),
+        style: HoopixType.body.copyWith(color: palette.labelSecondary),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          style: TextButton.styleFrom(foregroundColor: palette.labelSecondary),
+          child: Text(l10n.analyzeCancel, style: HoopixType.body),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: TextButton.styleFrom(foregroundColor: palette.danger),
+          child: Text(l10n.uninstallButtonLabel, style: HoopixType.body),
+        ),
+      ],
     );
   }
 }
