@@ -7,9 +7,7 @@ void main() {
   late Directory home;
 
   setUp(() async {
-    home = await Directory.systemTemp.createTemp(
-      'hoopix_uninstall_leftovers_',
-    );
+    home = await Directory.systemTemp.createTemp('hoopix_uninstall_leftovers_');
   });
 
   tearDown(() async {
@@ -28,14 +26,8 @@ void main() {
       appName: 'MyApp',
     );
 
-    expect(
-      result,
-      contains('${home.path}/Library/Application Support/MyApp'),
-    );
-    expect(
-      result,
-      isNot(contains('${home.path}/Library/Caches/MyApp')),
-    );
+    expect(result, contains('${home.path}/Library/Application Support/MyApp'));
+    expect(result, isNot(contains('${home.path}/Library/Caches/MyApp')));
   });
 
   test('returns nothing when no candidate exists', () async {
