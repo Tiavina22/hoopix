@@ -1,4 +1,5 @@
 import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/purge/domain/entities/purge_identity_snapshot.dart';
 
 /// Ports the shape of `_mole_snapshot_path_identity` /
 /// `_mole_path_matches_identity` (`lib/core/file_ops.sh`): purge's
@@ -54,18 +55,4 @@ class PurgeIdentity {
     if (lastSlash <= 0) return '/';
     return trimmed.substring(0, lastSlash);
   }
-}
-
-/// A path's identity at one point in time — see [PurgeIdentity] for why
-/// both halves matter.
-class PurgeIdentitySnapshot {
-  const PurgeIdentitySnapshot({
-    required this.parentIdentity,
-    required this.targetIdentity,
-  });
-
-  final String? parentIdentity;
-  final String? targetIdentity;
-
-  bool get isComplete => parentIdentity != null && targetIdentity != null;
 }

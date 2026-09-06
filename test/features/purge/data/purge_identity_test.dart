@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/purge/data/datasources/purge_identity.dart';
+import 'package:hoopix/features/purge/domain/entities/purge_identity_snapshot.dart';
 
 import '../../../support/fake_process_runner.dart';
 
