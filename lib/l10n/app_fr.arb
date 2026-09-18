@@ -160,6 +160,10 @@
   "uninstallConfirmBrew": "{count, plural, one{L’une d’elles est gérée par Homebrew, qui la désinstalle lui-même avec les fichiers de sa liste zap. Cette partie est définitive : elle n’ira pas à la corbeille.} other{{count} d’entre elles sont gérées par Homebrew, qui les désinstalle lui-même avec les fichiers de leurs listes zap. Cette partie est définitive : elle n’ira pas à la corbeille.}}",
   "uninstallTrashed": "{count, plural, one{1 application désinstallée.} other{{count} applications désinstallées.}}",
   "uninstallTrashRefused": "{count, plural, one{1 élément n’a pas pu être supprimé.} other{{count} éléments n’ont pas pu être supprimés.}}",
+  "uninstallLeftBehindTitle": "Encore actif après la suppression",
+  "uninstallBackgroundItemsWarning": "Un élément d’arrière-plan tourne encore pour {apps}. Désactivez-le dans Réglages Système > Général > Ouverture et extensions.",
+  "uninstallSystemExtensionsWarning": "Des extensions système peuvent rester pour {apps}. Retirez-les dans Réglages Système > Général > Ouverture et extensions.",
+  "uninstallLeftBehindDismiss": "OK",
 
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "Aucun appareil connecté",

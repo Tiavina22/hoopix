@@ -10,10 +10,12 @@ import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardo
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/login_item_teardown.dart';
+import 'package:hoopix/features/uninstall/data/datasources/removal_warnings.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
 import 'package:hoopix/features/uninstall/domain/entities/sibling_guard.dart';
+import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 import 'package:hoopix/features/uninstall/domain/repositories/uninstall_inventory_repository.dart';
 
 /// Sizing an app bundle is the same `du` work every other feature's own
@@ -32,6 +34,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     LoginItemTeardown? loginItemTeardown,
     BrewCask? brewCask,
     DockCleanup? dockCleanup,
+    RemovalWarnings? removalWarnings,
     Trash trash = const Trash(),
     OperationLog? log,
   }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
@@ -46,6 +49,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
        _loginItemTeardown = loginItemTeardown ?? LoginItemTeardown(),
        _brewCask = brewCask ?? BrewCask(),
        _dockCleanup = dockCleanup ?? DockCleanup(home: home),
+       _removalWarnings = removalWarnings ?? RemovalWarnings(),
        _trash = trash,
        _log = log ?? OperationLog(home: home);
 
@@ -59,6 +63,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final LoginItemTeardown _loginItemTeardown;
   final BrewCask _brewCask;
   final DockCleanup _dockCleanup;
+  final RemovalWarnings _removalWarnings;
   final Trash _trash;
   final OperationLog _log;
 
@@ -102,8 +107,8 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   }
 
   @override
-  Future<Map<String, String>> approve(List<InstalledApp> approved) async {
-    if (approved.isEmpty) return const {};
+  Future<UninstallResult> approve(List<InstalledApp> approved) async {
+    if (approved.isEmpty) return const UninstallResult();
 
     // The inventory that produced [approved] can be stale by the time the
     // user confirms; a fresh snapshot is what the sibling-guard narrowing
@@ -319,16 +324,21 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       if (bootout == LaunchTeardownResult.timedOut) break;
     }
 
-    // Only an app that is really gone loses its Dock tile, keyed by the
-    // same possibly-demoted bundle id its removal used.
-    final dockTargets = [
+    final removedApps = [
       for (final app in approved)
         if (brewed.contains(app.path) ||
             (toRemove.contains(app.path) && !failures.containsKey(app.path)))
-          DockTarget(
-            appPath: app.path,
-            bundleId: effectiveBundleIds[app.path] ?? 'unknown',
-          ),
+          app,
+    ];
+
+    // Only an app that is really gone loses its Dock tile, keyed by the
+    // same possibly-demoted bundle id its removal used.
+    final dockTargets = [
+      for (final app in removedApps)
+        DockTarget(
+          appPath: app.path,
+          bundleId: effectiveBundleIds[app.path] ?? 'unknown',
+        ),
     ];
     if (dockTargets.isNotEmpty) {
       // Mole runs the Dock cleanup and the LaunchServices rebuild together
@@ -361,7 +371,29 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       );
     }
 
-    return failures;
+    // Mole's end-of-batch review: what macOS keeps for a removed app that
+    // only System Settings can switch off. Checked with the same demoted
+    // bundle id, so a surviving install's own job is never blamed on it.
+    final backgroundItemApps = <String>[];
+    final systemExtensionApps = <String>[];
+    for (final app in removedApps) {
+      final bundleId = effectiveBundleIds[app.path] ?? 'unknown';
+      if (await _removalWarnings.backgroundJobLoaded([
+        bundleId,
+        ...?helperIdsByApp[app.path],
+      ])) {
+        backgroundItemApps.add(app.displayName);
+      }
+      if (_removalWarnings.hasSystemExtension(bundleId)) {
+        systemExtensionApps.add(app.displayName);
+      }
+    }
+
+    return UninstallResult(
+      failures: failures,
+      backgroundItemApps: backgroundItemApps,
+      systemExtensionApps: systemExtensionApps,
+    );
   }
 
   Future<void> _afterRemoval(List<DockTarget> dockTargets) async {

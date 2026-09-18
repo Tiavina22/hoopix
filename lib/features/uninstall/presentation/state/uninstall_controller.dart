@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
+import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/approve_uninstall.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/watch_uninstall_inventory.dart';
 
@@ -85,26 +86,26 @@ class UninstallController extends ChangeNotifier {
 
   /// Whether there is anything checked to approve yet. Guards the button
   /// rather than letting an empty approval look like it did something.
-  bool get canApprove =>
-      !isRemoving && !isScanning && selectedApps.isNotEmpty;
+  bool get canApprove => !isRemoving && !isScanning && selectedApps.isNotEmpty;
 
   /// Removes everything the user left checked — each app's bundle and its
   /// exact known leftovers — to the Trash, then re-scans so the screen
   /// reflects the disk rather than what it remembered.
   ///
-  /// Returns the paths that did not go, mapped to why.
-  Future<Map<String, String>> approve() async {
+  /// Returns the paths that did not go, mapped to why, and what macOS
+  /// still keeps for the apps that did.
+  Future<UninstallResult> approve() async {
     final approved = selectedApps;
-    if (approved.isEmpty) return const {};
+    if (approved.isEmpty) return const UninstallResult();
 
     isRemoving = true;
     notifyListeners();
 
-    final failures = await _approveUninstall(approved);
+    final result = await _approveUninstall(approved);
 
     isRemoving = false;
     start();
-    return failures;
+    return result;
   }
 
   @override

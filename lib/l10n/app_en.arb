@@ -402,6 +402,24 @@
       "count": { "type": "int" }
     }
   },
+  "uninstallLeftBehindTitle": "Still active after removal",
+  "uninstallBackgroundItemsWarning": "A background item is still running for {apps}. Turn it off in System Settings > General > Login Items & Extensions.",
+  "@uninstallBackgroundItemsWarning": {
+    "placeholders": {
+      "apps": {
+        "type": "String"
+      }
+    }
+  },
+  "uninstallSystemExtensionsWarning": "System extensions may remain for {apps}. Remove them in System Settings > General > Login Items & Extensions.",
+  "@uninstallSystemExtensionsWarning": {
+    "placeholders": {
+      "apps": {
+        "type": "String"
+      }
+    }
+  },
+  "uninstallLeftBehindDismiss": "OK",
 
   "bluetoothCardTitle": "Bluetooth",
   "noBluetoothDevicesConnected": "No devices connected",

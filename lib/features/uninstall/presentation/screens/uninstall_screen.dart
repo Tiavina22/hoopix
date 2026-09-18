@@ -9,6 +9,7 @@ import 'package:hoopix/core/widgets/metric_card.dart';
 import 'package:hoopix/features/uninstall/data/repositories/uninstall_inventory_repository_impl.dart';
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
 import 'package:hoopix/features/uninstall/domain/entities/sibling_guard.dart';
+import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 import 'package:hoopix/features/uninstall/domain/repositories/uninstall_inventory_repository.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/approve_uninstall.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/watch_uninstall_inventory.dart';
@@ -74,9 +75,9 @@ class _UninstallScreenState extends State<UninstallScreen> {
     if (confirmed != true || !mounted) return;
 
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final failures = await _controller.approve();
-    if (messenger == null) return;
-    messenger.showSnackBar(
+    final result = await _controller.approve();
+    final failures = result.failures;
+    messenger?.showSnackBar(
       SnackBar(
         content: Text(
           failures.isNotEmpty
@@ -84,6 +85,13 @@ class _UninstallScreenState extends State<UninstallScreen> {
               : l10n.uninstallTrashed(selected.length),
         ),
       ),
+    );
+
+    // Mole's end-of-batch review lines: only the user can switch these off.
+    if (!result.hasWarnings || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _LeftBehindDialog(result: result),
     );
   }
 
@@ -376,6 +384,58 @@ class _Badge extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+    );
+  }
+}
+
+/// What macOS keeps after the removal and no public command can remove:
+/// a still-loaded background job, or an activated system extension.
+class _LeftBehindDialog extends StatelessWidget {
+  const _LeftBehindDialog({required this.result});
+
+  final UninstallResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
+    final style = HoopixType.body.copyWith(color: palette.labelSecondary);
+
+    return AlertDialog(
+      backgroundColor: palette.surface,
+      title: Text(
+        l10n.uninstallLeftBehindTitle,
+        style: HoopixType.title.copyWith(color: palette.labelPrimary),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (result.backgroundItemApps.isNotEmpty)
+            Text(
+              l10n.uninstallBackgroundItemsWarning(
+                result.backgroundItemApps.join(', '),
+              ),
+              style: style,
+            ),
+          if (result.backgroundItemApps.isNotEmpty &&
+              result.systemExtensionApps.isNotEmpty)
+            const SizedBox(height: HoopixSpacing.md),
+          if (result.systemExtensionApps.isNotEmpty)
+            Text(
+              l10n.uninstallSystemExtensionsWarning(
+                result.systemExtensionApps.join(', '),
+              ),
+              style: style,
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.uninstallLeftBehindDismiss, style: HoopixType.body),
+        ),
+      ],
     );
   }
 }

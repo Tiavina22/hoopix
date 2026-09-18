@@ -3,25 +3,33 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
+import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 import 'package:hoopix/features/uninstall/domain/repositories/uninstall_inventory_repository.dart';
 import 'package:hoopix/features/uninstall/presentation/screens/uninstall_screen.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
 class _FakeUninstallInventoryRepository
     implements UninstallInventoryRepository {
-  _FakeUninstallInventoryRepository(this.emissions, {this.approveResult});
+  _FakeUninstallInventoryRepository(
+    this.emissions, {
+    this.approveResult,
+    this.result,
+  });
 
   final List<List<InstalledApp>> emissions;
   final Map<String, String>? approveResult;
+
+  /// A full result, for tests that need warnings; wins over [approveResult].
+  final UninstallResult? result;
   final List<List<String>> approved = [];
 
   @override
   Stream<List<InstalledApp>> watchInventory() => Stream.fromIterable(emissions);
 
   @override
-  Future<Map<String, String>> approve(List<InstalledApp> approved) async {
+  Future<UninstallResult> approve(List<InstalledApp> approved) async {
     this.approved.add([for (final app in approved) app.path]);
-    return approveResult ?? const {};
+    return result ?? UninstallResult(failures: approveResult ?? const {});
   }
 }
 
@@ -239,6 +247,70 @@ void main() {
       expect(find.textContaining('managed by Homebrew'), findsNothing);
     },
   );
+
+  testWidgets(
+    'after removal, says what macOS still keeps and where to turn it off',
+    (tester) async {
+      final repository = _FakeUninstallInventoryRepository(
+        [
+          [
+            const InstalledApp(
+              path: '/Applications/AdGuard.app',
+              bundleId: 'com.adguard.mac.adguard',
+              displayName: 'AdGuard',
+            ),
+          ],
+        ],
+        result: const UninstallResult(
+          backgroundItemApps: ['AdGuard'],
+          systemExtensionApps: ['AdGuard'],
+        ),
+      );
+      await tester.pumpWidget(harness(repository));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Uninstall'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Still active after removal'), findsOneWidget);
+      expect(
+        find.textContaining('A background item is still running for AdGuard'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('System extensions may remain for AdGuard'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, 'OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('Still active after removal'), findsNothing);
+    },
+  );
+
+  testWidgets('a clean removal shows no warning at all', (tester) async {
+    final repository = _FakeUninstallInventoryRepository([
+      [
+        const InstalledApp(
+          path: '/Applications/App.app',
+          bundleId: 'com.example.App',
+          displayName: 'App',
+        ),
+      ],
+    ]);
+    await tester.pumpWidget(harness(repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Uninstall'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Still active after removal'), findsNothing);
+    expect(find.text('Uninstalled 1 app.'), findsOneWidget);
+  });
 
   testWidgets('confirming uninstalls exactly what was selected', (
     tester,

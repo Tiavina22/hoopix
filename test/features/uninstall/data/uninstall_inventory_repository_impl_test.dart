@@ -12,6 +12,7 @@ import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardo
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/login_item_teardown.dart';
+import 'package:hoopix/features/uninstall/data/datasources/removal_warnings.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
 import 'package:hoopix/features/uninstall/data/repositories/uninstall_inventory_repository_impl.dart';
@@ -23,6 +24,13 @@ import '../../../support/fake_process_runner.dart';
 // walk that does not live under `home` — redirected in tests so a scan
 // never touches this machine's real /System/Applications, etc. See
 // live_sibling_scanner_test.dart's own copy of this list and rationale.
+/// [UninstallInventoryRepositoryImpl.approve]'s failures alone, for the
+/// many cases that only care what did not go.
+Future<Map<String, String>> failuresOf(
+  UninstallInventoryRepositoryImpl repository,
+  List<InstalledApp> approved,
+) async => (await repository.approve(approved)).failures;
+
 /// A [BrewCask] that finds no `brew` binary at all, so no test ever runs
 /// this machine's real Homebrew.
 BrewCask _noBrew() => BrewCask(typeOf: (_) => FileSystemEntityType.notFound);
@@ -98,6 +106,7 @@ void main() {
     LoginItemTeardown? loginItemTeardown,
     BrewCask? brewCask,
     DockCleanup? dockCleanup,
+    RemovalWarnings? removalWarnings,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -145,6 +154,11 @@ void main() {
             runner: probe,
             typeOf: (_) => FileSystemEntityType.notFound,
           ),
+      // Never this machine's own launchd or /Library/SystemExtensions: the
+      // fake cannot read a uid and no extension folder is ever listed.
+      removalWarnings:
+          removalWarnings ??
+          RemovalWarnings(runner: probe, listNames: (_) => const []),
     );
   }
 
@@ -282,7 +296,7 @@ void main() {
         sizeBytes: 2048,
       );
 
-      final failures = await repository.approve([installedApp]);
+      final failures = await failuresOf(repository, [installedApp]);
 
       expect(failures, isEmpty);
       expect(trashCalls.single.arguments, {
@@ -338,7 +352,7 @@ void main() {
         displayName: 'MyApp',
       );
 
-      final failures = await repository.approve([installedApp]);
+      final failures = await failuresOf(repository, [installedApp]);
 
       expect(failures, isEmpty);
       expect(trashCalls.single.arguments, {
@@ -375,7 +389,7 @@ void main() {
         displayName: 'MyApp',
       );
 
-      final failures = await repository.approve([installedApp]);
+      final failures = await failuresOf(repository, [installedApp]);
 
       expect(failures, contains(app.path));
       final entries = readLog();
@@ -385,7 +399,7 @@ void main() {
     test('an empty approval is a no-op', () async {
       final repository = repositoryWith(responses: const {});
 
-      final failures = await repository.approve(const []);
+      final failures = await failuresOf(repository, const []);
 
       expect(failures, isEmpty);
     });
@@ -406,7 +420,7 @@ void main() {
           return <Object?, Object?>{};
         });
 
-        final failures = await repository.approve([
+        final failures = await failuresOf(repository, [
           InstalledApp(
             path: app.path,
             bundleId: 'com.example.MyApp',
@@ -438,7 +452,7 @@ void main() {
             return <Object?, Object?>{};
           });
 
-          final failures = await repository.approve([
+          final failures = await failuresOf(repository, [
             InstalledApp(
               path: app.path,
               bundleId: 'com.example.MyApp',
@@ -492,7 +506,7 @@ void main() {
             return <Object?, Object?>{};
           });
 
-          await repository.approve([
+          await failuresOf(repository, [
             InstalledApp(
               path: app.path,
               bundleId: 'com.example.MyApp',
@@ -533,7 +547,7 @@ void main() {
           return <Object?, Object?>{};
         });
 
-        final failures = await repository.approve([
+        final failures = await failuresOf(repository, [
           InstalledApp(
             path: app.path,
             bundleId: 'com.example.MyApp',
@@ -569,7 +583,7 @@ void main() {
             return <Object?, Object?>{};
           });
 
-          final failures = await repository.approve([
+          final failures = await failuresOf(repository, [
             InstalledApp(
               path: app.path,
               bundleId: 'com.example.MyApp',
@@ -595,7 +609,7 @@ void main() {
           launchServicesRegistration: registrationWith(_EventRunner(events)),
         );
 
-        await repository.approve(const []);
+        await failuresOf(repository, const []);
         await Future<void>.delayed(Duration.zero);
 
         expect(events, isEmpty);
@@ -643,7 +657,7 @@ void main() {
           return <Object?, Object?>{};
         });
 
-        final failures = await repository.approve([
+        final failures = await failuresOf(repository, [
           InstalledApp(
             path: app.path,
             bundleId: 'com.example.MyApp',
@@ -689,7 +703,7 @@ void main() {
             (call) async => <Object?, Object?>{},
           );
 
-          await repository.approve([
+          await failuresOf(repository, [
             InstalledApp(
               path: app.path,
               bundleId: 'com.example.MyApp',
@@ -720,7 +734,7 @@ void main() {
           return {for (final p in paths) p: 'in use'};
         });
 
-        final failures = await repository.approve([
+        final failures = await failuresOf(repository, [
           InstalledApp(
             path: app.path,
             bundleId: 'com.example.MyApp',
@@ -751,7 +765,7 @@ void main() {
             return <Object?, Object?>{};
           });
 
-          final failures = await repository.approve([
+          final failures = await failuresOf(repository, [
             InstalledApp(
               path: app.path,
               bundleId: 'com.example.MyApp',
@@ -835,7 +849,7 @@ void main() {
           return <Object?, Object?>{};
         });
 
-        final failures = await repository.approve([installed(fixture.app)]);
+        final failures = await failuresOf(repository, [installed(fixture.app)]);
 
         expect(failures, isEmpty);
         expect(fake.calls, contains('uninstall --cask --zap myapp'));
@@ -874,7 +888,7 @@ void main() {
           return <Object?, Object?>{};
         });
 
-        await repository.approve([installed(fixture.app)]);
+        await failuresOf(repository, [installed(fixture.app)]);
 
         expect(fake.calls, contains('uninstall --cask myapp'));
         expect(fake.calls, isNot(contains('uninstall --cask --zap myapp')));
@@ -897,7 +911,9 @@ void main() {
             return <Object?, Object?>{};
           });
 
-          final failures = await repository.approve([installed(fixture.app)]);
+          final failures = await failuresOf(repository, [
+            installed(fixture.app),
+          ]);
 
           expect(trashCalled, isFalse);
           expect(fixture.app.existsSync(), isTrue);
@@ -927,7 +943,9 @@ void main() {
             return <Object?, Object?>{};
           });
 
-          final failures = await repository.approve([installed(fixture.app)]);
+          final failures = await failuresOf(repository, [
+            installed(fixture.app),
+          ]);
 
           expect(failures, isEmpty);
           expect(trashed.first, fixture.app.path);
@@ -954,7 +972,7 @@ void main() {
           return <Object?, Object?>{};
         });
 
-        final failures = await repository.approve([installed(fixture.app)]);
+        final failures = await failuresOf(repository, [installed(fixture.app)]);
 
         expect(trashCalled, isFalse);
         expect(events, isEmpty);
@@ -978,7 +996,7 @@ void main() {
             return <Object?, Object?>{};
           });
 
-          final failures = await repository.approve([
+          final failures = await failuresOf(repository, [
             installed(fixture.app),
             const InstalledApp(
               path: later,
@@ -1014,7 +1032,7 @@ void main() {
           (call) async => <Object?, Object?>{},
         );
 
-        await repository.approve([
+        await failuresOf(repository, [
           InstalledApp(
             path: app.path,
             bundleId: 'com.example.MyApp',
@@ -1053,7 +1071,7 @@ void main() {
           (call) async => <Object?, Object?>{},
         );
 
-        await repository.approve([
+        await failuresOf(repository, [
           InstalledApp(
             path: app.path,
             bundleId: 'com.example.MyApp',
@@ -1077,7 +1095,7 @@ void main() {
           return {for (final p in paths) p: 'in use'};
         });
 
-        await repository.approve([
+        await failuresOf(repository, [
           InstalledApp(
             path: app.path,
             bundleId: 'com.example.MyApp',
@@ -1088,6 +1106,125 @@ void main() {
 
         expect(dock.calls, 0);
       });
+    });
+
+    group('left-behind warnings', () {
+      RemovalWarnings warningsWith({
+        Set<String> loaded = const {},
+        Map<String, List<String>> extensions = const {},
+      }) => RemovalWarnings(
+        runner: _EventRunner(
+          [],
+          responses: {
+            'id -u': ProcessResult.success('501\n'),
+            for (final label in loaded)
+              'launchctl print gui/501/$label': ProcessResult.success(''),
+          },
+          // Anything not listed as loaded answers like launchd's 113.
+          failUnlisted: true,
+        ),
+        listNames: (dir) => extensions[dir] ?? const [],
+      );
+
+      test('names a removed app whose background job is still loaded, or that '
+          'still has a system extension', () async {
+        final app = await makeApp('MyApp');
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          removalWarnings: warningsWith(
+            loaded: {'com.example.MyApp'},
+            extensions: {
+              '/Library/SystemExtensions': ['UUID'],
+              '/Library/SystemExtensions/UUID': [
+                'com.example.MyApp.network-extension.systemextension',
+              ],
+            },
+          ),
+        );
+        messenger.setMockMethodCallHandler(
+          trashChannel,
+          (call) async => <Object?, Object?>{},
+        );
+
+        final result = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(result.failures, isEmpty);
+        expect(result.backgroundItemApps, ['MyApp']);
+        expect(result.systemExtensionApps, ['MyApp']);
+      });
+
+      test('an app the Trash refused is never warned about', () async {
+        final app = await makeApp('MyApp');
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          removalWarnings: warningsWith(loaded: {'com.example.MyApp'}),
+        );
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          final paths = (call.arguments as Map)['paths'] as List;
+          return {for (final p in paths) p: 'in use'};
+        });
+
+        final result = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(result.hasWarnings, isFalse);
+      });
+
+      test(
+        "a live sibling's own job is never blamed on the removed app",
+        () async {
+          final app = await makeApp('MyApp');
+          final sibling = await makeApp('MyApp-beta');
+          final siblingPlist = '${sibling.path}/Contents/Info.plist';
+          final repository = repositoryWith(
+            responses: {
+              ...myAppResponses(app.path),
+              'plutil -extract CFBundleIdentifier raw $siblingPlist':
+                  ProcessResult.success('com.example.MyApp\n'),
+              'plutil -extract LSBackgroundOnly raw $siblingPlist':
+                  ProcessResult.success('0\n'),
+              'plutil -extract CFBundleDisplayName raw $siblingPlist':
+                  ProcessResult.success('MyApp Beta\n'),
+              'plutil -extract CFBundleName raw $siblingPlist':
+                  ProcessResult.success('MyApp Beta\n'),
+            },
+            removalWarnings: warningsWith(
+              loaded: {'com.example.MyApp'},
+              extensions: {
+                '/Library/SystemExtensions': [
+                  'com.example.MyApp.extension.systemextension',
+                ],
+              },
+            ),
+          );
+          messenger.setMockMethodCallHandler(
+            trashChannel,
+            (call) async => <Object?, Object?>{},
+          );
+
+          final result = await repository.approve([
+            InstalledApp(
+              path: app.path,
+              bundleId: 'com.example.MyApp',
+              displayName: 'MyApp',
+            ),
+          ]);
+
+          expect(result.failures, isEmpty);
+          expect(result.hasWarnings, isFalse);
+        },
+      );
     });
   });
 }
@@ -1102,8 +1239,13 @@ class _EventRunner extends ProcessRunner {
     bool timeOut = false,
     Set<String> timeOutExecutables = const {},
     this.responses = const {},
+    this.failUnlisted = false,
   }) : _timeOutExecutables = timeOutExecutables,
        _timeOutAll = timeOut;
+
+  /// When set, a command missing from [responses] exits non-zero instead of
+  /// succeeding.
+  final bool failUnlisted;
 
   final List<String> events;
   final Set<String> _timeOutExecutables;
@@ -1122,7 +1264,12 @@ class _EventRunner extends ProcessRunner {
         ProcessFailure.timedOut(executable, const Duration(seconds: 5)),
       );
     }
-    return responses[key] ?? ProcessResult.success('');
+    return responses[key] ??
+        (failUnlisted
+            ? ProcessResult.failure(
+                ProcessFailure.nonZeroExit(executable, 113, 'not found'),
+              )
+            : ProcessResult.success(''));
   }
 }
 

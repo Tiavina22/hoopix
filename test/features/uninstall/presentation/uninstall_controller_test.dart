@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
+import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 import 'package:hoopix/features/uninstall/domain/repositories/uninstall_inventory_repository.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/approve_uninstall.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/watch_uninstall_inventory.dart';
@@ -29,9 +30,9 @@ class _FakeUninstallInventoryRepository
   Stream<List<InstalledApp>> watchInventory() => Stream.fromIterable(emissions);
 
   @override
-  Future<Map<String, String>> approve(List<InstalledApp> approved) async {
+  Future<UninstallResult> approve(List<InstalledApp> approved) async {
     approvedCall = approved;
-    return approveResult ?? const {};
+    return UninstallResult(failures: approveResult ?? const {});
   }
 }
 
@@ -42,8 +43,8 @@ class _FailingUninstallInventoryRepository
       Stream<List<InstalledApp>>.error(StateError('scan failed'));
 
   @override
-  Future<Map<String, String>> approve(List<InstalledApp> approved) async =>
-      const {};
+  Future<UninstallResult> approve(List<InstalledApp> approved) async =>
+      const UninstallResult();
 }
 
 UninstallController _controllerFor(UninstallInventoryRepository repo) =>
@@ -144,9 +145,9 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     controller.toggle(_app.path);
 
-    final failures = await controller.approve();
+    final result = await controller.approve();
 
-    expect(failures, isEmpty);
+    expect(result.failures, isEmpty);
     expect(repo.approvedCall, [_otherApp]);
     expect(controller.isRemoving, isFalse);
   });
@@ -164,9 +165,9 @@ void main() {
     controller.start();
     await Future<void>.delayed(Duration.zero);
 
-    final failures = await controller.approve();
+    final result = await controller.approve();
 
-    expect(failures, {_app.path: 'refused'});
+    expect(result.failures, {_app.path: 'refused'});
   });
 
   test('canApprove is false with nothing selected or while removing', () async {

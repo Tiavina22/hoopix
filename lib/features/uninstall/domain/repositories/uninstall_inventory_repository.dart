@@ -1,4 +1,5 @@
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
+import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 
 /// Installed apps, their leftover files, and their sizes, for review, plus
 /// the app-bundle-and-known-leftovers removal [approve] performs.
@@ -21,7 +22,8 @@ abstract class UninstallInventoryRepository {
 
   /// Removes each of [approved] — its app bundle and its exact known
   /// leftover files — to the Trash, or its bundle through Homebrew when
-  /// Homebrew manages it. Returns the paths that did not go, mapped to why;
-  /// an empty map means everything went.
-  Future<Map<String, String>> approve(List<InstalledApp> approved);
+  /// Homebrew manages it. The result maps each path that did not go to
+  /// why, and names the removed apps macOS still keeps a background job or
+  /// system extension for.
+  Future<UninstallResult> approve(List<InstalledApp> approved);
 }
