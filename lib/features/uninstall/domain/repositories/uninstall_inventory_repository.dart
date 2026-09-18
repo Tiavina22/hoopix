@@ -10,7 +10,8 @@ import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
 ///
 /// Before anything moves it also stops the app's launch agents, clears its
 /// LaunchServices entry and login item, and routes a Homebrew-managed app
-/// through `brew uninstall --cask` instead of the Trash.
+/// through `brew uninstall --cask` instead of the Trash. Once an app is
+/// really gone, its Dock tile goes too.
 abstract class UninstallInventoryRepository {
   /// Every installed app this scan reaches, with its leftover files
   /// already found, emitted first without sizes measured, then again as

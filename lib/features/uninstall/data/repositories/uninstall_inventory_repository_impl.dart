@@ -5,6 +5,7 @@ import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/brew_cask.dart';
+import 'package:hoopix/features/uninstall/data/datasources/dock_cleanup.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
@@ -30,6 +31,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     LaunchServicesRegistration? launchServicesRegistration,
     LoginItemTeardown? loginItemTeardown,
     BrewCask? brewCask,
+    DockCleanup? dockCleanup,
     Trash trash = const Trash(),
     OperationLog? log,
   }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
@@ -43,6 +45,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
            launchServicesRegistration ?? LaunchServicesRegistration(),
        _loginItemTeardown = loginItemTeardown ?? LoginItemTeardown(),
        _brewCask = brewCask ?? BrewCask(),
+       _dockCleanup = dockCleanup ?? DockCleanup(home: home),
        _trash = trash,
        _log = log ?? OperationLog(home: home);
 
@@ -55,6 +58,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final LaunchServicesRegistration _launchServicesRegistration;
   final LoginItemTeardown _loginItemTeardown;
   final BrewCask _brewCask;
+  final DockCleanup _dockCleanup;
   final Trash _trash;
   final OperationLog _log;
 
@@ -112,6 +116,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     final notAttempted = <String, String>{};
     final helperIdsByApp = <String, List<String>>{};
     final brewed = <String>{};
+    final effectiveBundleIds = <String, String>{};
     String? abortReason;
 
     for (final app in approved) {
@@ -243,6 +248,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       }
 
       sizeByPath[app.path] = app.sizeBytes;
+      effectiveBundleIds[app.path] = effectiveBundleId;
 
       final token = cask.token;
       if (token != null) {
@@ -313,12 +319,23 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       if (bootout == LaunchTeardownResult.timedOut) break;
     }
 
-    if (toRemove.isNotEmpty || brewed.isNotEmpty) {
-      // Rebuilding the whole LaunchServices database can be slow and its
-      // outcome is never worth waiting on — fire it and move on, matching
-      // Mole's own disowned background job, which runs after a batch that
-      // actually removed something.
-      unawaited(_launchServicesRegistration.refresh());
+    // Only an app that is really gone loses its Dock tile, keyed by the
+    // same possibly-demoted bundle id its removal used.
+    final dockTargets = [
+      for (final app in approved)
+        if (brewed.contains(app.path) ||
+            (toRemove.contains(app.path) && !failures.containsKey(app.path)))
+          DockTarget(
+            appPath: app.path,
+            bundleId: effectiveBundleIds[app.path] ?? 'unknown',
+          ),
+    ];
+    if (dockTargets.isNotEmpty) {
+      // Mole runs the Dock cleanup and the LaunchServices rebuild together
+      // as one disowned background job after a batch that removed at least
+      // one app: both can be slow, and neither outcome is worth making the
+      // user wait on.
+      unawaited(_afterRemoval(dockTargets));
     }
 
     for (final path in toRemove) {
@@ -345,6 +362,11 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     }
 
     return failures;
+  }
+
+  Future<void> _afterRemoval(List<DockTarget> dockTargets) async {
+    await _dockCleanup.remove(dockTargets);
+    await _launchServicesRegistration.refresh();
   }
 }
 

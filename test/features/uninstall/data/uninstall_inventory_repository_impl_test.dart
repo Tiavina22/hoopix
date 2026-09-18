@@ -7,6 +7,7 @@ import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/brew_cask.dart';
+import 'package:hoopix/features/uninstall/data/datasources/dock_cleanup.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
@@ -96,6 +97,7 @@ void main() {
     LaunchServicesRegistration? launchServicesRegistration,
     LoginItemTeardown? loginItemTeardown,
     BrewCask? brewCask,
+    DockCleanup? dockCleanup,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -134,6 +136,15 @@ void main() {
             listNames: (_) => const [],
           ),
       brewCask: brewCask ?? _noBrew(),
+      // Never this machine's own Dock: no plist is ever found, so no tile is
+      // edited and the Dock is never restarted.
+      dockCleanup:
+          dockCleanup ??
+          DockCleanup(
+            home: home.path,
+            runner: probe,
+            typeOf: (_) => FileSystemEntityType.notFound,
+          ),
     );
   }
 
@@ -981,6 +992,103 @@ void main() {
         },
       );
     });
+
+    group('dock', () {
+      test('hands a removed app to the Dock cleanup with its bundle id, before '
+          'the LaunchServices rebuild', () async {
+        final app = await makeApp('MyApp');
+        final events = <String>[];
+        final dock = _RecordingDock(events);
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          dockCleanup: dock,
+          launchServicesRegistration: LaunchServicesRegistration(
+            refreshRunner: _EventRunner(events),
+            typeOf: (path) => path == _lsregisterPath
+                ? FileSystemEntityType.file
+                : FileSystemEntityType.notFound,
+          ),
+        );
+        messenger.setMockMethodCallHandler(
+          trashChannel,
+          (call) async => <Object?, Object?>{},
+        );
+
+        await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+        await pumpEventQueue();
+
+        expect(dock.targets.single.appPath, app.path);
+        expect(dock.targets.single.bundleId, 'com.example.MyApp');
+        expect(events.first, 'dock');
+        expect(events.last, startsWith('$_lsregisterPath -r'));
+      });
+
+      test('a live sibling keeps its tile: only the path can match', () async {
+        final app = await makeApp('MyApp');
+        final sibling = await makeApp('MyApp-beta');
+        final siblingPlist = '${sibling.path}/Contents/Info.plist';
+        final dock = _RecordingDock([]);
+        final repository = repositoryWith(
+          responses: {
+            ...myAppResponses(app.path),
+            'plutil -extract CFBundleIdentifier raw $siblingPlist':
+                ProcessResult.success('com.example.MyApp\n'),
+            'plutil -extract LSBackgroundOnly raw $siblingPlist':
+                ProcessResult.success('0\n'),
+            'plutil -extract CFBundleDisplayName raw $siblingPlist':
+                ProcessResult.success('MyApp Beta\n'),
+            'plutil -extract CFBundleName raw $siblingPlist':
+                ProcessResult.success('MyApp Beta\n'),
+          },
+          dockCleanup: dock,
+        );
+        messenger.setMockMethodCallHandler(
+          trashChannel,
+          (call) async => <Object?, Object?>{},
+        );
+
+        await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+        await pumpEventQueue();
+
+        expect(dock.targets.single.bundleId, 'unknown');
+      });
+
+      test('an app the Trash refused keeps its tile', () async {
+        final app = await makeApp('MyApp');
+        final dock = _RecordingDock([]);
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          dockCleanup: dock,
+        );
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          final paths = (call.arguments as Map)['paths'] as List;
+          return {for (final p in paths) p: 'in use'};
+        });
+
+        await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+        await pumpEventQueue();
+
+        expect(dock.calls, 0);
+      });
+    });
   });
 }
 
@@ -1088,5 +1196,23 @@ class _RepoBrew extends ProcessRunner {
     return ProcessResult.failure(
       ProcessFailure.nonZeroExit(executable, 1, 'Unknown command: $key'),
     );
+  }
+}
+
+/// Records what the repository hands the Dock cleanup instead of touching
+/// any Dock.
+class _RecordingDock extends DockCleanup {
+  _RecordingDock(this.events) : super(home: '/nonexistent');
+
+  final List<String> events;
+  final targets = <DockTarget>[];
+  var calls = 0;
+
+  @override
+  Future<bool> remove(List<DockTarget> targets) async {
+    calls++;
+    events.add('dock');
+    this.targets.addAll(targets);
+    return false;
   }
 }
