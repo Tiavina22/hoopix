@@ -1,8 +1,6 @@
 /// One installed application, with what the inventory scan learned about
-/// it. This is a read-only snapshot — nothing about it implies the app can
-/// be removed yet; teardown (the shared-bundle-id sibling guard, launch
-/// services/login item cleanup, brew cask routing) is separate,
-/// higher-risk work ported after this inventory.
+/// it. A snapshot for review: removal never trusts it, and re-reads the
+/// sibling guard, leftovers, and Homebrew ownership fresh before acting.
 class InstalledApp {
   const InstalledApp({
     required this.path,
@@ -10,6 +8,7 @@ class InstalledApp {
     required this.displayName,
     this.sizeBytes,
     this.leftoverPaths = const [],
+    this.caskName,
   });
 
   final String path;
@@ -25,9 +24,13 @@ class InstalledApp {
 
   /// Existing leftover files/directories `find_app_files`'s ported subset
   /// found for this app — see `UninstallLeftoverDiscovery`. Shown for
-  /// review; nothing here has been deleted or is being offered for
-  /// deletion yet.
+  /// review.
   final List<String> leftoverPaths;
+
+  /// The Homebrew cask token that manages this app, when the preview scan
+  /// found one — Mole's `[Brew]` tag. Such an app is uninstalled through
+  /// Homebrew rather than moved to the Trash.
+  final String? caskName;
 
   InstalledApp withSize(int? sizeBytes) => InstalledApp(
     path: path,
@@ -35,13 +38,25 @@ class InstalledApp {
     displayName: displayName,
     sizeBytes: sizeBytes,
     leftoverPaths: leftoverPaths,
+    caskName: caskName,
   );
 
-  InstalledApp withLeftoverPaths(List<String> leftoverPaths) => InstalledApp(
+  InstalledApp withLeftoverPaths(List<String> leftoverPaths) =>
+      _copy(leftoverPaths: leftoverPaths);
+
+  InstalledApp withCaskName(String? caskName) =>
+      _copy(caskName: caskName, clearCask: caskName == null);
+
+  InstalledApp _copy({
+    List<String>? leftoverPaths,
+    String? caskName,
+    bool clearCask = false,
+  }) => InstalledApp(
     path: path,
     bundleId: bundleId,
     displayName: displayName,
     sizeBytes: sizeBytes,
-    leftoverPaths: leftoverPaths,
+    leftoverPaths: leftoverPaths ?? this.leftoverPaths,
+    caskName: clearCask ? null : caskName ?? this.caskName,
   );
 }

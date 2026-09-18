@@ -16,13 +16,12 @@ import 'package:hoopix/features/uninstall/presentation/state/uninstall_controlle
 import 'package:hoopix/l10n/app_localizations.dart';
 
 /// Installed apps, their leftover files, and their sizes. Approving what's
-/// checked moves each app's bundle and its exact known leftovers to the
-/// Trash — gated by a fresh live same-bundle-id sibling re-scan and fresh
-/// leftover re-discovery immediately before anything is removed, never the
-/// possibly-stale list this screen shows.
-///
-/// Launch services/login item teardown and Homebrew cask routing are not
-/// part of this pass yet — each is its own separate, higher-risk port.
+/// checked stops each app's launch agents, removes its login item, then
+/// moves its bundle and exact known leftovers to the Trash — or, for an app
+/// Homebrew manages, uninstalls it through Homebrew. Every step is gated by
+/// a fresh live same-bundle-id sibling re-scan and fresh re-discovery
+/// immediately before anything is removed, never the possibly-stale list
+/// this screen shows.
 class UninstallScreen extends StatefulWidget {
   const UninstallScreen({super.key, this.repository, this.homePath});
 
@@ -68,6 +67,7 @@ class _UninstallScreenState extends State<UninstallScreen> {
       context: context,
       builder: (context) => _UninstallConfirmationDialog(
         count: selected.length,
+        brewCount: selected.where((app) => app.caskName != null).length,
         sizeBytes: _controller.selectedReclaimableBytes,
       ),
     );
@@ -339,6 +339,11 @@ class _AppCard extends StatelessWidget {
                         text: l10n.uninstallSharedInstallBadge,
                         color: palette.brand,
                       ),
+                    if (app.caskName != null)
+                      _Badge(
+                        text: l10n.uninstallBrewBadge,
+                        color: palette.labelSecondary,
+                      ),
                   ],
                 ),
               ],
@@ -393,16 +398,19 @@ class _Notice extends StatelessWidget {
   }
 }
 
-/// Names what is about to move and where it goes — Trash, not permanent
-/// deletion, and recoverable from there, for every path this pass ever
-/// touches.
+/// Names what is about to move and where it goes. Everything hoopix removes
+/// itself goes to the Trash; an app Homebrew manages is uninstalled by
+/// Homebrew instead, which is permanent, so the dialog says so whenever the
+/// selection includes one.
 class _UninstallConfirmationDialog extends StatelessWidget {
   const _UninstallConfirmationDialog({
     required this.count,
+    required this.brewCount,
     required this.sizeBytes,
   });
 
   final int count;
+  final int brewCount;
   final int sizeBytes;
 
   @override
@@ -416,9 +424,22 @@ class _UninstallConfirmationDialog extends StatelessWidget {
         l10n.uninstallConfirmTitle(count),
         style: HoopixType.title.copyWith(color: palette.labelPrimary),
       ),
-      content: Text(
-        l10n.uninstallConfirmBody(formatBytes(sizeBytes)),
-        style: HoopixType.body.copyWith(color: palette.labelSecondary),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.uninstallConfirmBody(formatBytes(sizeBytes)),
+            style: HoopixType.body.copyWith(color: palette.labelSecondary),
+          ),
+          if (brewCount > 0) ...[
+            const SizedBox(height: HoopixSpacing.md),
+            Text(
+              l10n.uninstallConfirmBrew(brewCount),
+              style: HoopixType.body.copyWith(color: palette.danger),
+            ),
+          ],
+        ],
       ),
       actions: [
         TextButton(

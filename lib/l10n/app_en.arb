@@ -365,7 +365,8 @@
     }
   },
   "uninstallSharedInstallBadge": "Shared install",
-  "uninstallHint": "Moves the app bundle and its known leftover files to the Trash. Launch services, login items, and Homebrew casks aren’t handled yet.",
+  "uninstallBrewBadge": "Homebrew",
+  "uninstallHint": "Stops each app’s launch agents and removes its login item, then moves the app and its known leftover files to the Trash. Apps installed with Homebrew are uninstalled through Homebrew instead.",
   "uninstallNoneSelected": "Nothing selected",
   "uninstallButtonLabel": "Uninstall",
   "uninstallWorking": "Uninstalling…",
@@ -379,6 +380,14 @@
   "@uninstallConfirmBody": {
     "placeholders": {
       "size": { "type": "String" }
+    }
+  },
+  "uninstallConfirmBrew": "{count, plural, one{1 of them is managed by Homebrew, which uninstalls it itself along with the files its zap list names. That part is permanent: it won’t be in the Trash.} other{{count} of them are managed by Homebrew, which uninstalls them itself along with the files their zap lists name. That part is permanent: it won’t be in the Trash.}}",
+  "@uninstallConfirmBrew": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
     }
   },
   "uninstallTrashed": "{count, plural, one{Uninstalled 1 app.} other{Uninstalled {count} apps.}}",

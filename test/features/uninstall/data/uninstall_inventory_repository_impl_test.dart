@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/brew_cask.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
@@ -21,6 +22,10 @@ import '../../../support/fake_process_runner.dart';
 // walk that does not live under `home` — redirected in tests so a scan
 // never touches this machine's real /System/Applications, etc. See
 // live_sibling_scanner_test.dart's own copy of this list and rationale.
+/// A [BrewCask] that finds no `brew` binary at all, so no test ever runs
+/// this machine's real Homebrew.
+BrewCask _noBrew() => BrewCask(typeOf: (_) => FileSystemEntityType.notFound);
+
 const _fixedAbsoluteRoots = [
   '/Applications',
   '/System/Applications',
@@ -90,6 +95,7 @@ void main() {
     ProcessRunner? launchctl,
     LaunchServicesRegistration? launchServicesRegistration,
     LoginItemTeardown? loginItemTeardown,
+    BrewCask? brewCask,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -127,6 +133,7 @@ void main() {
             scriptRunner: probe,
             listNames: (_) => const [],
           ),
+      brewCask: brewCask ?? _noBrew(),
     );
   }
 
@@ -191,6 +198,7 @@ void main() {
       ),
       leftoverDiscovery: UninstallLeftoverDiscovery(),
       sizeProbe: SizeProbe(probe),
+      brewCask: _noBrew(),
     );
 
     final snapshots = await repository.watchInventory().toList();
@@ -218,6 +226,7 @@ void main() {
         probe: FakeProcessRunner(const {}),
         directory: redirect,
       ),
+      brewCask: _noBrew(),
     );
 
     final snapshots = await repository.watchInventory().toList();
@@ -749,6 +758,229 @@ void main() {
         },
       );
     });
+
+    group('homebrew', () {
+      /// A BrewCask over [fake]: brew "exists", every other path is checked
+      /// on the real (temp) filesystem, and the real Caskrooms are never
+      /// listed, so detection only ever sees what [fake] answers.
+      BrewCask brewWith(_RepoBrew fake) => BrewCask(
+        probe: fake,
+        uninstallRunner: (_) => fake,
+        typeOf: (path) => path == '/opt/homebrew/bin/brew'
+            ? FileSystemEntityType.file
+            : FileSystemEntity.typeSync(path, followLinks: false),
+        resolvePath: (path) => path,
+        readLink: (_) => null,
+        listNames: (_) => const [],
+      );
+
+      Future<({Directory app, String kept, String zapped})> brewedApp() async {
+        final app = await makeApp('MyApp');
+        final kept = await Directory(
+          '${home.path}/Library/Application Support/MyApp',
+        ).create(recursive: true);
+        final zapped = await Directory(
+          '${home.path}/Library/Caches/MyApp',
+        ).create(recursive: true);
+        return (app: app, kept: kept.path, zapped: zapped.path);
+      }
+
+      InstalledApp installed(Directory app) => InstalledApp(
+        path: app.path,
+        bundleId: 'com.example.MyApp',
+        displayName: 'MyApp',
+      );
+
+      test('the inventory tags a Homebrew-managed app for review', () async {
+        final fixture = await brewedApp();
+        final fake = _RepoBrew(appPath: fixture.app.path);
+        final repository = repositoryWith(
+          responses: myAppResponses(fixture.app.path),
+          brewCask: brewWith(fake),
+        );
+
+        final snapshots = await repository.watchInventory().toList();
+
+        expect(snapshots.first.single.caskName, isNull);
+        expect(snapshots.last.single.caskName, 'myapp');
+        // Review only: the preview never runs a single uninstall.
+        expect(fake.calls.where((c) => c.startsWith('uninstall')), isEmpty);
+      });
+
+      test('uninstalls a cask through Homebrew with --zap, then moves only the '
+          'leftovers the zap did not already remove', () async {
+        final fixture = await brewedApp();
+        final fake = _RepoBrew(
+          appPath: fixture.app.path,
+          zapRemoves: [fixture.zapped],
+        );
+        final repository = repositoryWith(
+          responses: myAppResponses(fixture.app.path),
+          brewCask: brewWith(fake),
+        );
+        final trashed = <Object?>[];
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          trashed.addAll((call.arguments as Map)['paths'] as List);
+          return <Object?, Object?>{};
+        });
+
+        final failures = await repository.approve([installed(fixture.app)]);
+
+        expect(failures, isEmpty);
+        expect(fake.calls, contains('uninstall --cask --zap myapp'));
+        expect(trashed, [fixture.kept]);
+        expect(fixture.app.existsSync(), isFalse);
+        final outcomes = {for (final e in readLog()) e['path']: e};
+        expect(outcomes[fixture.app.path]?['outcome'], 'cleared');
+        expect(
+          outcomes[fixture.app.path]?['detail'],
+          'brew uninstall --cask --zap myapp',
+        );
+      });
+
+      test('a live sibling gets a plain uninstall, never --zap', () async {
+        final fixture = await brewedApp();
+        final sibling = await makeApp('MyApp-beta');
+        final siblingPlist = '${sibling.path}/Contents/Info.plist';
+        final fake = _RepoBrew(appPath: fixture.app.path);
+        final repository = repositoryWith(
+          responses: {
+            ...myAppResponses(fixture.app.path),
+            'plutil -extract CFBundleIdentifier raw $siblingPlist':
+                ProcessResult.success('com.example.MyApp\n'),
+            'plutil -extract LSBackgroundOnly raw $siblingPlist':
+                ProcessResult.success('0\n'),
+            'plutil -extract CFBundleDisplayName raw $siblingPlist':
+                ProcessResult.success('MyApp Beta\n'),
+            'plutil -extract CFBundleName raw $siblingPlist':
+                ProcessResult.success('MyApp Beta\n'),
+          },
+          brewCask: brewWith(fake),
+        );
+        final trashed = <Object?>[];
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          trashed.addAll((call.arguments as Map)['paths'] as List);
+          return <Object?, Object?>{};
+        });
+
+        await repository.approve([installed(fixture.app)]);
+
+        expect(fake.calls, contains('uninstall --cask myapp'));
+        expect(fake.calls, isNot(contains('uninstall --cask --zap myapp')));
+        // Narrowed to the bundle alone: no leftover belongs to this app.
+        expect(trashed, isEmpty);
+      });
+
+      test(
+        'refuses, and moves nothing, while Homebrew still lists the cask',
+        () async {
+          final fixture = await brewedApp();
+          final fake = _RepoBrew(appPath: fixture.app.path, fails: true);
+          final repository = repositoryWith(
+            responses: myAppResponses(fixture.app.path),
+            brewCask: brewWith(fake),
+          );
+          var trashCalled = false;
+          messenger.setMockMethodCallHandler(trashChannel, (call) async {
+            trashCalled = true;
+            return <Object?, Object?>{};
+          });
+
+          final failures = await repository.approve([installed(fixture.app)]);
+
+          expect(trashCalled, isFalse);
+          expect(fixture.app.existsSync(), isTrue);
+          expect(
+            failures[fixture.app.path],
+            contains('brew uninstall --cask --zap myapp'),
+          );
+        },
+      );
+
+      test(
+        'falls back to the Trash once Homebrew no longer tracks the cask',
+        () async {
+          final fixture = await brewedApp();
+          final fake = _RepoBrew(
+            appPath: fixture.app.path,
+            fails: true,
+            forgetsCaskOnFailure: true,
+          );
+          final repository = repositoryWith(
+            responses: myAppResponses(fixture.app.path),
+            brewCask: brewWith(fake),
+          );
+          final trashed = <Object?>[];
+          messenger.setMockMethodCallHandler(trashChannel, (call) async {
+            trashed.addAll((call.arguments as Map)['paths'] as List);
+            return <Object?, Object?>{};
+          });
+
+          final failures = await repository.approve([installed(fixture.app)]);
+
+          expect(failures, isEmpty);
+          expect(trashed.first, fixture.app.path);
+          expect(trashed, containsAll([fixture.kept, fixture.zapped]));
+        },
+      );
+
+      test('refuses an app whose Homebrew state cannot be read, before any '
+          'teardown', () async {
+        final fixture = await brewedApp();
+        final fake = _RepoBrew(appPath: fixture.app.path, listFails: true);
+        final events = <String>[];
+        final repository = repositoryWith(
+          responses: myAppResponses(fixture.app.path),
+          brewCask: brewWith(fake),
+          loginItemTeardown: LoginItemTeardown(
+            runner: _EventRunner(events),
+            scriptRunner: _EventRunner(events),
+          ),
+        );
+        var trashCalled = false;
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          trashCalled = true;
+          return <Object?, Object?>{};
+        });
+
+        final failures = await repository.approve([installed(fixture.app)]);
+
+        expect(trashCalled, isFalse);
+        expect(events, isEmpty);
+        expect(failures, contains(fixture.app.path));
+        expect(fake.calls.where((c) => c.startsWith('uninstall')), isEmpty);
+      });
+
+      test(
+        'a brew uninstall that times out refuses it and every app after it',
+        () async {
+          final fixture = await brewedApp();
+          const later = '/Applications/Later.app';
+          final fake = _RepoBrew(appPath: fixture.app.path, timesOut: true);
+          final repository = repositoryWith(
+            responses: myAppResponses(fixture.app.path),
+            brewCask: brewWith(fake),
+          );
+          var trashCalled = false;
+          messenger.setMockMethodCallHandler(trashChannel, (call) async {
+            trashCalled = true;
+            return <Object?, Object?>{};
+          });
+
+          final failures = await repository.approve([
+            installed(fixture.app),
+            const InstalledApp(
+              path: later,
+              bundleId: 'com.example.Later',
+              displayName: 'Later',
+            ),
+          ]);
+
+          expect(trashCalled, isFalse);
+          expect(failures.keys, unorderedEquals([fixture.app.path, later]));
+        },
+      );
+    });
   });
 }
 
@@ -789,3 +1021,72 @@ class _EventRunner extends ProcessRunner {
 const _lsregisterPath =
     '/System/Library/Frameworks/CoreServices.framework/Frameworks/'
     'LaunchServices.framework/Support/lsregister';
+
+/// A stateful stand-in for Homebrew managing one app as the cask `myapp`:
+/// `brew info` owns [appPath], and a successful uninstall really deletes the
+/// app bundle (plus whatever [zapRemoves] names, as a zap would) and drops
+/// the cask from `brew list`.
+class _RepoBrew extends ProcessRunner {
+  _RepoBrew({
+    required this.appPath,
+    this.zapRemoves = const [],
+    this.fails = false,
+    this.forgetsCaskOnFailure = false,
+    this.listFails = false,
+    this.timesOut = false,
+  });
+
+  final String appPath;
+  final List<String> zapRemoves;
+  final bool fails;
+  final bool forgetsCaskOnFailure;
+  final bool listFails;
+  final bool timesOut;
+  final calls = <String>[];
+  var _listed = true;
+
+  @override
+  Future<ProcessResult> run(String executable, List<String> arguments) async {
+    final brewAt = arguments.indexOf('/opt/homebrew/bin/brew');
+    final key = arguments.sublist(brewAt + 1).join(' ');
+    calls.add(key);
+    if (key == 'list --cask') {
+      if (listFails) {
+        return ProcessResult.failure(
+          ProcessFailure.nonZeroExit(executable, 1, 'Error'),
+        );
+      }
+      return ProcessResult.success(_listed ? 'myapp\n' : '');
+    }
+    if (key == 'info --cask myapp') {
+      return ProcessResult.success('==> Artifacts\n$appPath (App)\n');
+    }
+    if (key.startsWith('uninstall --cask')) {
+      if (timesOut) {
+        return ProcessResult.failure(
+          ProcessFailure.timedOut(executable, const Duration(minutes: 5)),
+        );
+      }
+      if (fails) {
+        if (forgetsCaskOnFailure) _listed = false;
+        return ProcessResult.failure(
+          ProcessFailure.nonZeroExit(
+            executable,
+            1,
+            'sudo: a terminal is required',
+          ),
+        );
+      }
+      for (final path in [appPath, if (key.contains('--zap')) ...zapRemoves]) {
+        // Test fixtures only: every path here lives under a temp directory.
+        final dir = Directory(path);
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      }
+      _listed = false;
+      return ProcessResult.success('');
+    }
+    return ProcessResult.failure(
+      ProcessFailure.nonZeroExit(executable, 1, 'Unknown command: $key'),
+    );
+  }
+}

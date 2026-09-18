@@ -8,8 +8,9 @@ import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
 /// immediately before deleting anything, the same "never trust the preview
 /// window" contract Clean and Purge's own repositories already keep.
 ///
-/// Launch services/login item teardown and brew cask routing are not part
-/// of this contract yet — each is its own separate, higher-risk port.
+/// Before anything moves it also stops the app's launch agents, clears its
+/// LaunchServices entry and login item, and routes a Homebrew-managed app
+/// through `brew uninstall --cask` instead of the Trash.
 abstract class UninstallInventoryRepository {
   /// Every installed app this scan reaches, with its leftover files
   /// already found, emitted first without sizes measured, then again as
@@ -18,7 +19,8 @@ abstract class UninstallInventoryRepository {
   Stream<List<InstalledApp>> watchInventory();
 
   /// Removes each of [approved] — its app bundle and its exact known
-  /// leftover files — to the Trash. Returns the paths that did not go,
-  /// mapped to why; an empty map means everything moved.
+  /// leftover files — to the Trash, or its bundle through Homebrew when
+  /// Homebrew manages it. Returns the paths that did not go, mapped to why;
+  /// an empty map means everything went.
   Future<Map<String, String>> approve(List<InstalledApp> approved);
 }

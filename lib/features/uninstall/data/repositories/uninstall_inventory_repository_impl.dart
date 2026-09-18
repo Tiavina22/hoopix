@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
-import 'dart:async';
-
+import 'package:hoopix/features/uninstall/data/datasources/brew_cask.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
@@ -28,6 +29,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     LaunchServiceTeardown? launchServiceTeardown,
     LaunchServicesRegistration? launchServicesRegistration,
     LoginItemTeardown? loginItemTeardown,
+    BrewCask? brewCask,
     Trash trash = const Trash(),
     OperationLog? log,
   }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
@@ -40,6 +42,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
        _launchServicesRegistration =
            launchServicesRegistration ?? LaunchServicesRegistration(),
        _loginItemTeardown = loginItemTeardown ?? LoginItemTeardown(),
+       _brewCask = brewCask ?? BrewCask(),
        _trash = trash,
        _log = log ?? OperationLog(home: home);
 
@@ -51,6 +54,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final LaunchServiceTeardown _launchServiceTeardown;
   final LaunchServicesRegistration _launchServicesRegistration;
   final LoginItemTeardown _loginItemTeardown;
+  final BrewCask _brewCask;
   final Trash _trash;
   final OperationLog _log;
 
@@ -72,12 +76,24 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     yield withLeftovers;
     if (withLeftovers.isEmpty) return;
 
-    var sizes = {for (final app in withLeftovers) app.path: app.sizeBytes};
-    await for (final probe in SizeProbe.pool([
+    // Mole's `[Brew]` tag, for review only: approve() detects again, fresh,
+    // before it decides how an app actually goes. A cask whose state cannot
+    // be read here is just shown untagged.
+    final detections = await _brewCask.detectAll([
       for (final app in withLeftovers) app.path,
+    ]);
+    final tagged = [
+      for (final app in withLeftovers)
+        app.withCaskName(detections[app.path]?.token),
+    ];
+    if (tagged.any((app) => app.caskName != null)) yield tagged;
+
+    var sizes = {for (final app in tagged) app.path: app.sizeBytes};
+    await for (final probe in SizeProbe.pool([
+      for (final app in tagged) app.path,
     ], _sizeProbe.sizeOf)) {
       sizes = {...sizes, probe.key: probe.sizeBytes};
-      yield [for (final app in withLeftovers) app.withSize(sizes[app.path])];
+      yield [for (final app in tagged) app.withSize(sizes[app.path])];
     }
   }
 
@@ -95,11 +111,13 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     final sizeByPath = <String, int?>{};
     final notAttempted = <String, String>{};
     final helperIdsByApp = <String, List<String>>{};
+    final brewed = <String>{};
     String? abortReason;
 
     for (final app in approved) {
       if (abortReason != null) {
-        // launchd or LaunchServices stopped answering for an earlier app;
+        // launchd, LaunchServices, or Homebrew stopped answering for an
+        // earlier app;
         // Mole abandons the rest of the batch on the same signal rather than
         // keep issuing calls that will time out too.
         notAttempted[app.path] = abortReason;
@@ -145,6 +163,22 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
           effectiveAppName = app.displayName;
           removeLoginItem = true;
         }
+      }
+
+      // Mole decides whether Homebrew owns the app before tearing anything
+      // down, so an app it cannot classify keeps its agents and login item.
+      // Never the preview's tag: the answer must be as fresh as the rest.
+      final cask = await _brewCask.detect(app.path);
+      if (cask.kind == CaskDetectionKind.timedOut) {
+        abortReason = _brewProbeTimedOut;
+        notAttempted[app.path] = abortReason;
+        continue;
+      }
+      if (cask.kind == CaskDetectionKind.unknown) {
+        // Moving a Homebrew-managed app to the Trash would leave brew
+        // listing an app that is gone, so doubt refuses rather than guesses.
+        notAttempted[app.path] = _brewStateUnknown;
+        continue;
       }
 
       // Re-discover fresh rather than reusing app.leftoverPaths from the
@@ -208,8 +242,56 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         );
       }
 
-      toRemove.add(app.path);
       sizeByPath[app.path] = app.sizeBytes;
+
+      final token = cask.token;
+      if (token != null) {
+        // A zap deletes bundle-id-keyed data, which a surviving same-bundle
+        // install still uses — the same narrowing as the leftover list.
+        final zap = bootoutHelpers;
+        final result = await _brewCask.uninstall(
+          token,
+          appPath: app.path,
+          zap: zap,
+          sizeBytes: app.sizeBytes,
+        );
+        if (result == CaskUninstallResult.timedOut) {
+          abortReason = _brewUninstallTimedOut(token, zap: zap);
+          notAttempted[app.path] = abortReason;
+          continue;
+        }
+        if (result == CaskUninstallResult.removed) {
+          brewed.add(app.path);
+          _log.record(
+            command: 'uninstall',
+            outcome: OperationOutcome.cleared,
+            targetPath: app.path,
+            detail: _brewCommand(token, zap: zap),
+            sizeBytes: app.sizeBytes,
+          );
+          // Whatever the zap already removed is gone; move what it left.
+          toRemove.addAll(
+            _leftoverDiscovery.discover(
+              home: home,
+              bundleId: effectiveBundleId,
+              appName: effectiveAppName,
+            ),
+          );
+          continue;
+        }
+        // Only when Homebrew no longer tracks the cask does the app fall back
+        // to the Trash; otherwise brew would keep listing an app Mole
+        // removed behind its back.
+        final state = await _brewCask.installState(token);
+        if (state != CaskInstallState.notInstalled) {
+          notAttempted[app.path] = state == CaskInstallState.installed
+              ? _brewStillInstalled(token, zap: zap)
+              : _brewStateUnknownAfter(token);
+          continue;
+        }
+      }
+
+      toRemove.add(app.path);
       for (final leftover in leftovers) {
         toRemove.add(leftover);
       }
@@ -231,7 +313,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       if (bootout == LaunchTeardownResult.timedOut) break;
     }
 
-    if (toRemove.isNotEmpty) {
+    if (toRemove.isNotEmpty || brewed.isNotEmpty) {
       // Rebuilding the whole LaunchServices database can be slow and its
       // outcome is never worth waiting on — fire it and move on, matching
       // Mole's own disowned background job, which runs after a batch that
@@ -272,3 +354,22 @@ const _lsregisterTimedOut =
     'lsregister did not answer in time; nothing was removed for this app';
 const _loginItemTimedOut =
     'System Events did not answer in time; its login item was left in place';
+const _brewProbeTimedOut =
+    'Homebrew did not answer in time; nothing was removed for this app';
+const _brewStateUnknown =
+    'could not tell whether Homebrew manages this app; nothing was removed';
+
+String _brewCommand(String token, {required bool zap}) =>
+    'brew uninstall --cask ${zap ? '--zap ' : ''}$token';
+
+String _brewUninstallTimedOut(String token, {required bool zap}) =>
+    '`${_brewCommand(token, zap: zap)}` did not finish in time; check '
+    '`brew list --cask` before trying again';
+
+String _brewStillInstalled(String token, {required bool zap}) =>
+    'Homebrew could not uninstall it and still lists it; run '
+    '`${_brewCommand(token, zap: zap)}` in Terminal';
+
+String _brewStateUnknownAfter(String token) =>
+    'Homebrew could not uninstall it and its state could not be read; run '
+    '`${_brewCommand(token, zap: true)}` in Terminal';

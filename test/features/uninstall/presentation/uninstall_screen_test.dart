@@ -176,6 +176,70 @@ void main() {
     expect(repository.approved, isEmpty);
   });
 
+  testWidgets('tags an app Homebrew manages', (tester) async {
+    await tester.pumpWidget(
+      harness(
+        _FakeUninstallInventoryRepository([
+          [
+            const InstalledApp(
+              path: '/Applications/Firefox.app',
+              bundleId: 'org.mozilla.firefox',
+              displayName: 'Firefox',
+              caskName: 'firefox',
+            ),
+            const InstalledApp(
+              path: '/Applications/App.app',
+              bundleId: 'com.example.App',
+              displayName: 'App',
+            ),
+          ],
+        ]),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Homebrew'), findsOneWidget);
+  });
+
+  testWidgets(
+    'warns that a Homebrew uninstall is permanent only when one is selected',
+    (tester) async {
+      final repository = _FakeUninstallInventoryRepository([
+        [
+          const InstalledApp(
+            path: '/Applications/Firefox.app',
+            bundleId: 'org.mozilla.firefox',
+            displayName: 'Firefox',
+            caskName: 'firefox',
+          ),
+          const InstalledApp(
+            path: '/Applications/App.app',
+            bundleId: 'com.example.App',
+            displayName: 'App',
+          ),
+        ],
+      ]);
+      await tester.pumpWidget(harness(repository));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('1 of them is managed by Homebrew'),
+        findsOneWidget,
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      // Uncheck Firefox (sorted after App): the warning must go with it.
+      await tester.tap(find.byType(Checkbox).at(2));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('managed by Homebrew'), findsNothing);
+    },
+  );
+
   testWidgets('confirming uninstalls exactly what was selected', (
     tester,
   ) async {
