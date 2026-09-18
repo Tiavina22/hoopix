@@ -9,6 +9,7 @@ import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/theme/theme_controller.dart';
 import 'package:hoopix/features/analyze/presentation/screens/analyze_screen.dart';
 import 'package:hoopix/features/clean/presentation/screens/clean_screen.dart';
+import 'package:hoopix/features/history/presentation/screens/history_screen.dart';
 import 'package:hoopix/features/optimize/presentation/screens/optimize_screen.dart';
 import 'package:hoopix/features/purge/presentation/screens/purge_screen.dart';
 import 'package:hoopix/features/settings/presentation/screens/settings_screen.dart';
@@ -66,6 +67,7 @@ class _AppShellState extends State<AppShell> {
       HoopixSection.clean => const CleanScreen(),
       HoopixSection.optimize => const OptimizeScreen(),
       HoopixSection.purge => const PurgeScreen(),
+      HoopixSection.history => const HistoryScreen(),
       HoopixSection.status => const StatusScreen(),
       HoopixSection.uninstall => const UninstallScreen(),
       HoopixSection.settings => SettingsScreen(

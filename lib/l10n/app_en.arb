@@ -13,6 +13,8 @@
   "sectionStatusDescription": "Monitor system health",
   "sectionPurgeLabel": "Purge",
   "sectionPurgeDescription": "Clean project build artifacts",
+  "sectionHistoryLabel": "History",
+  "sectionHistoryDescription": "Review past operations",
   "sectionSettingsLabel": "Settings",
   "sectionSettingsDescription": "App preferences",
 
@@ -431,5 +433,22 @@
     }
   },
 
-  "unavailable": "Unavailable"
+  "unavailable": "Unavailable",
+
+  "historyEmpty": "No activity yet.",
+  "historyFailed": "Couldn’t read the history: {error}",
+  "@historyFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "historyRefresh": "Refresh",
+  "historyToday": "Today",
+  "historyYesterday": "Yesterday",
+  "historyOutcomeTrashed": "Trashed",
+  "historyOutcomeRefused": "Refused",
+  "historyOutcomeSkipped": "Skipped",
+  "historyOutcomeCleared": "Cleared"
 }

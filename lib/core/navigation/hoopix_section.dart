@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
-/// The six capabilities Mole offers, plus Settings; hoopix mirrors the same
+/// The capabilities Mole offers, plus Settings; hoopix mirrors the same
 /// shape. [isImplemented] sections have a real feature behind them; the
 /// rest route to a shared placeholder until each gets its own feature
 /// module.
@@ -15,6 +15,7 @@ enum HoopixSection {
   analyze(Icons.pie_chart_outline),
   status(Icons.speed_outlined),
   purge(Icons.folder_delete_outlined),
+  history(Icons.history_outlined),
   settings(Icons.settings_outlined);
 
   const HoopixSection(this.icon);
@@ -28,6 +29,7 @@ enum HoopixSection {
       this == HoopixSection.status ||
       this == HoopixSection.purge ||
       this == HoopixSection.uninstall ||
+      this == HoopixSection.history ||
       this == HoopixSection.settings;
 }
 
@@ -42,6 +44,7 @@ extension HoopixSectionL10n on HoopixSection {
     HoopixSection.analyze => l10n.sectionAnalyzeLabel,
     HoopixSection.status => l10n.sectionStatusLabel,
     HoopixSection.purge => l10n.sectionPurgeLabel,
+    HoopixSection.history => l10n.sectionHistoryLabel,
     HoopixSection.settings => l10n.sectionSettingsLabel,
   };
 
@@ -52,6 +55,7 @@ extension HoopixSectionL10n on HoopixSection {
     HoopixSection.analyze => l10n.sectionAnalyzeDescription,
     HoopixSection.status => l10n.sectionStatusDescription,
     HoopixSection.purge => l10n.sectionPurgeDescription,
+    HoopixSection.history => l10n.sectionHistoryDescription,
     HoopixSection.settings => l10n.sectionSettingsDescription,
   };
 }

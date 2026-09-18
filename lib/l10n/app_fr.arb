@@ -13,6 +13,8 @@
   "sectionStatusDescription": "Surveiller l'état du système",
   "sectionPurgeLabel": "Purger",
   "sectionPurgeDescription": "Nettoyer les artefacts de build des projets",
+  "sectionHistoryLabel": "Historique",
+  "sectionHistoryDescription": "Consulter les opérations passées",
   "sectionSettingsLabel": "Réglages",
   "sectionSettingsDescription": "Préférences de l'application",
 
@@ -169,5 +171,15 @@
   "noBluetoothDevicesConnected": "Aucun appareil connecté",
   "bluetoothBatteryLevel": "{name} · {battery}",
 
-  "unavailable": "Indisponible"
+  "unavailable": "Indisponible",
+
+  "historyEmpty": "Aucune activité pour l'instant.",
+  "historyFailed": "Impossible de lire l'historique : {error}",
+  "historyRefresh": "Actualiser",
+  "historyToday": "Aujourd'hui",
+  "historyYesterday": "Hier",
+  "historyOutcomeTrashed": "Supprimé",
+  "historyOutcomeRefused": "Refusé",
+  "historyOutcomeSkipped": "Ignoré",
+  "historyOutcomeCleared": "Nettoyé"
 }
