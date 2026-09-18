@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/pkg_receipt_apps.dart';
 
 import '../../../support/fake_process_runner.dart';
 
@@ -21,7 +22,14 @@ const _fixedAbsoluteRoots = [
   '/Library/Input Methods',
   '/opt/homebrew/Caskroom',
   '/usr/local/Caskroom',
+  '/Volumes',
 ];
+
+/// Receipts that read completely and name no app, so no test ever walks
+/// this machine's real pkgutil database.
+PkgReceiptApps _noReceipts() => PkgReceiptApps(
+  runner: FakeProcessRunner({'pkgutil --pkgs': ProcessResult.success('')}),
+);
 
 void main() {
   late Directory home;
@@ -65,10 +73,187 @@ void main() {
 
   LiveSiblingScanner scanner({
     Map<String, ProcessResult> responses = const {},
+    PkgReceiptApps? receipts,
   }) => LiveSiblingScanner(
     probe: FakeProcessRunner(responses),
     directory: redirect,
+    pkgReceipts: receipts ?? _noReceipts(),
   );
+
+  /// An app under the redirected `/Volumes/<volume>/...`.
+  Future<Directory> makeVolumeApp(String relative) async {
+    final dir = await Directory(
+      '${stubsRoot.path}/Volumes/$relative',
+    ).create(recursive: true);
+    await File('${dir.path}/Contents/Info.plist').create(recursive: true);
+    return dir;
+  }
+
+  String plistOf(Directory app) => '${app.path}/Contents/Info.plist';
+
+  Map<String, ProcessResult> ids(Map<Directory, String> apps) => {
+    for (final entry in apps.entries)
+      'plutil -extract CFBundleIdentifier raw ${plistOf(entry.key)}': _bundleId(
+        entry.value,
+      ),
+  };
+
+  group('mounted volumes', () {
+    test("finds a sibling in a volume's Applications folder", () async {
+      final removed = await makeApp('MyApp.app');
+      final other = await makeVolumeApp('External/Applications/MyApp.app');
+
+      final result =
+          await scanner(
+            responses: ids({
+              removed: 'com.example.MyApp',
+              other: 'com.example.MyApp',
+            }),
+          ).scan(
+            home: home.path,
+            bundleId: 'com.example.MyApp',
+            excludePath: removed.path,
+          );
+
+      expect(result, LiveSiblingScanResult.found);
+    });
+
+    test('finds a sibling sitting directly on a volume', () async {
+      final removed = await makeApp('MyApp.app');
+      final other = await makeVolumeApp('External/MyApp.app');
+
+      final result =
+          await scanner(
+            responses: ids({
+              removed: 'com.example.MyApp',
+              other: 'com.example.MyApp',
+            }),
+          ).scan(
+            home: home.path,
+            bundleId: 'com.example.MyApp',
+            excludePath: removed.path,
+          );
+
+      expect(result, LiveSiblingScanResult.found);
+    });
+
+    test(
+      'never follows a volume that is a symlink, like Macintosh HD',
+      () async {
+        final removed = await makeApp('MyApp.app');
+        final elsewhere = await Directory(
+          '${stubsRoot.path}/elsewhere/Applications/MyApp.app',
+        ).create(recursive: true);
+        await File(
+          '${elsewhere.path}/Contents/Info.plist',
+        ).create(recursive: true);
+        await Directory('${stubsRoot.path}/Volumes').create();
+        await Link(
+          '${stubsRoot.path}/Volumes/Macintosh HD',
+        ).create('${stubsRoot.path}/elsewhere');
+
+        final result =
+            await scanner(
+              responses: ids({
+                removed: 'com.example.MyApp',
+                elsewhere: 'com.example.MyApp',
+              }),
+            ).scan(
+              home: home.path,
+              bundleId: 'com.example.MyApp',
+              excludePath: removed.path,
+            );
+
+        expect(result, LiveSiblingScanResult.absent);
+      },
+    );
+
+    test('a volume it cannot read makes absence unprovable', () async {
+      final removed = await makeApp('MyApp.app');
+      final locked = await Directory(
+        '${stubsRoot.path}/Volumes/Locked',
+      ).create(recursive: true);
+      await Process.run('chmod', ['000', locked.path]);
+      addTearDown(() => Process.run('chmod', ['755', locked.path]));
+
+      final result =
+          await scanner(responses: ids({removed: 'com.example.MyApp'})).scan(
+            home: home.path,
+            bundleId: 'com.example.MyApp',
+            excludePath: removed.path,
+          );
+
+      expect(result, LiveSiblingScanResult.inconclusive);
+    });
+  });
+
+  group('package receipts', () {
+    test(
+      'finds a sibling a package installed outside every app root',
+      () async {
+        final removed = await makeApp('MyApp.app');
+        final installed = await Directory(
+          '${stubsRoot.path}/opt/vendor/MyApp.app',
+        ).create(recursive: true);
+        await File(plistOf(installed)).create(recursive: true);
+
+        final result =
+            await scanner(
+              responses: ids({
+                removed: 'com.example.MyApp',
+                installed: 'com.example.MyApp',
+              }),
+              receipts: _FixedReceipts([installed.path]),
+            ).scan(
+              home: home.path,
+              bundleId: 'com.example.MyApp',
+              excludePath: removed.path,
+            );
+
+        expect(result, LiveSiblingScanResult.found);
+      },
+    );
+
+    test(
+      'a receipt-named app whose bundle id cannot be read is a doubt',
+      () async {
+        final removed = await makeApp('MyApp.app');
+
+        final result =
+            await scanner(
+              responses: ids({removed: 'com.example.MyApp'}),
+              receipts: _FixedReceipts([
+                '${stubsRoot.path}/opt/vendor/Gone.app',
+              ]),
+            ).scan(
+              home: home.path,
+              bundleId: 'com.example.MyApp',
+              excludePath: removed.path,
+            );
+
+        expect(result, LiveSiblingScanResult.inconclusive);
+      },
+    );
+
+    test(
+      'receipts it could not read in full make absence unprovable',
+      () async {
+        final removed = await makeApp('MyApp.app');
+
+        final result =
+            await scanner(
+              responses: ids({removed: 'com.example.MyApp'}),
+              receipts: _FixedReceipts(const [], complete: false),
+            ).scan(
+              home: home.path,
+              bundleId: 'com.example.MyApp',
+              excludePath: removed.path,
+            );
+
+        expect(result, LiveSiblingScanResult.inconclusive);
+      },
+    );
+  });
 
   test('absent for a malformed bundle id', () async {
     final result = await scanner().scan(
@@ -218,3 +403,15 @@ void main() {
 
 String _infoPlistProbeKey(Directory app) =>
     'plutil -extract CFBundleIdentifier raw ${app.path}/Contents/Info.plist';
+
+class _FixedReceipts extends PkgReceiptApps {
+  _FixedReceipts(this.apps, {this.complete = true});
+
+  final List<String> apps;
+  final bool complete;
+
+  @override
+  Future<PkgReceiptScan> nonstandardAppPaths({
+    required DateTime deadline,
+  }) async => PkgReceiptScan(appPaths: apps, complete: complete);
+}

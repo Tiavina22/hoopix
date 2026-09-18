@@ -11,6 +11,7 @@ import 'package:hoopix/features/uninstall/data/datasources/dock_cleanup.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/pkg_receipt_apps.dart';
 import 'package:hoopix/features/uninstall/data/datasources/login_item_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/removal_warnings.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
@@ -41,7 +42,14 @@ const _fixedAbsoluteRoots = [
   '/Library/Input Methods',
   '/opt/homebrew/Caskroom',
   '/usr/local/Caskroom',
+  '/Volumes',
 ];
+
+/// Receipts that read completely and name no app, so no test ever walks
+/// this machine's real pkgutil database.
+PkgReceiptApps _noReceipts() => PkgReceiptApps(
+  runner: FakeProcessRunner({'pkgutil --pkgs': ProcessResult.success('')}),
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -118,7 +126,11 @@ void main() {
       ),
       leftoverDiscovery: UninstallLeftoverDiscovery(),
       sizeProbe: SizeProbe(probe),
-      liveSiblingScanner: LiveSiblingScanner(probe: probe, directory: redirect),
+      liveSiblingScanner: LiveSiblingScanner(
+        probe: probe,
+        directory: redirect,
+        pkgReceipts: _noReceipts(),
+      ),
       // Never the real launchctl: an unconfigured fake answers "not found",
       // which teardown treats like an ordinary unload failure.
       launchServiceTeardown: LaunchServiceTeardown(
