@@ -7,6 +7,7 @@ import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
+import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
@@ -86,6 +87,7 @@ void main() {
   UninstallInventoryRepositoryImpl repositoryWith({
     required Map<String, ProcessResult> responses,
     ProcessRunner? launchctl,
+    LaunchServicesRegistration? launchServicesRegistration,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -104,6 +106,15 @@ void main() {
         home: home.path,
         runner: launchctl ?? probe,
       ),
+      // Never the real lsregister: a test that does not care about it gets
+      // a `typeOf` that finds no binary at all, so unregisterApp/refresh
+      // are no-ops rather than real calls into this machine's own
+      // LaunchServices database.
+      launchServicesRegistration:
+          launchServicesRegistration ??
+          LaunchServicesRegistration(
+            typeOf: (_) => FileSystemEntityType.notFound,
+          ),
     );
   }
 
@@ -463,21 +474,124 @@ void main() {
         },
       );
     });
+
+    group('launch services registration', () {
+      LaunchServicesRegistration registrationWith(ProcessRunner runner) =>
+          LaunchServicesRegistration(
+            runner: runner,
+            refreshRunner: runner,
+            // The stubbed lsregister path always "exists"; every other path
+            // (the app bundle itself) is checked against the real
+            // filesystem, same as the app's own stub directory tree.
+            typeOf: (path) => path == _lsregisterPath
+                ? FileSystemEntityType.file
+                : FileSystemEntity.typeSync(path, followLinks: false),
+          );
+
+      test('unregisters the app before trashing it, then refreshes once the '
+          'batch is done', () async {
+        final app = await makeApp('MyApp');
+        final events = <String>[];
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          launchServicesRegistration: registrationWith(_EventRunner(events)),
+        );
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          events.add('trash ${(call.arguments as Map)['paths']}');
+          return <Object?, Object?>{};
+        });
+
+        final failures = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+        // The refresh is fired without being awaited; give it a turn to
+        // actually run before asserting on it.
+        await Future<void>.delayed(Duration.zero);
+
+        expect(failures, isEmpty);
+        expect(events, [
+          '$_lsregisterPath -u ${app.path}',
+          'trash ${[app.path]}',
+          '$_lsregisterPath -r -f -domain local -domain user -domain system',
+        ]);
+      });
+
+      test(
+        'refuses the app, and every app after it, when lsregister times out',
+        () async {
+          final app = await makeApp('MyApp');
+          const later = '/Applications/Later.app';
+          var trashCalled = false;
+          final repository = repositoryWith(
+            responses: myAppResponses(app.path),
+            launchServicesRegistration: registrationWith(
+              _EventRunner([], timeOutExecutables: {_lsregisterPath}),
+            ),
+          );
+          messenger.setMockMethodCallHandler(trashChannel, (call) async {
+            trashCalled = true;
+            return <Object?, Object?>{};
+          });
+
+          final failures = await repository.approve([
+            InstalledApp(
+              path: app.path,
+              bundleId: 'com.example.MyApp',
+              displayName: 'MyApp',
+            ),
+            const InstalledApp(
+              path: later,
+              bundleId: 'com.example.Later',
+              displayName: 'Later',
+            ),
+          ]);
+
+          expect(trashCalled, isFalse);
+          expect(failures.keys, unorderedEquals([app.path, later]));
+          expect(Directory(app.path).existsSync(), isTrue);
+        },
+      );
+
+      test('does not refresh when nothing reached the Trash step', () async {
+        final events = <String>[];
+        final repository = repositoryWith(
+          responses: const {},
+          launchServicesRegistration: registrationWith(_EventRunner(events)),
+        );
+
+        await repository.approve(const []);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(events, isEmpty);
+      });
+    });
   });
 }
 
 /// Records every call as `executable args...` into a list shared with the
 /// Trash handler, so a test can assert unload-before-trash ordering.
+/// [timeOutExecutables] lets a test make only one of launchctl/lsregister
+/// hang, so the two timeout paths can be told apart.
 class _EventRunner extends ProcessRunner {
-  _EventRunner(this.events, {this.timeOut = false});
+  _EventRunner(
+    this.events, {
+    bool timeOut = false,
+    Set<String> timeOutExecutables = const {},
+  }) : _timeOutExecutables = timeOut ? null : timeOutExecutables,
+       _timeOutAll = timeOut;
 
   final List<String> events;
-  final bool timeOut;
+  final Set<String>? _timeOutExecutables;
+  final bool _timeOutAll;
 
   @override
   Future<ProcessResult> run(String executable, List<String> arguments) async {
     events.add([executable, ...arguments].join(' '));
-    if (timeOut) {
+    if (_timeOutAll || (_timeOutExecutables?.contains(executable) ?? false)) {
       return ProcessResult.failure(
         ProcessFailure.timedOut(executable, const Duration(seconds: 5)),
       );
@@ -485,3 +599,7 @@ class _EventRunner extends ProcessRunner {
     return ProcessResult.success('');
   }
 }
+
+const _lsregisterPath =
+    '/System/Library/Frameworks/CoreServices.framework/Frameworks/'
+    'LaunchServices.framework/Support/lsregister';

@@ -2,7 +2,10 @@ import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
+import 'dart:async';
+
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
+import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
@@ -22,6 +25,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     SizeProbe? sizeProbe,
     LiveSiblingScanner? liveSiblingScanner,
     LaunchServiceTeardown? launchServiceTeardown,
+    LaunchServicesRegistration? launchServicesRegistration,
     Trash trash = const Trash(),
     OperationLog? log,
   }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
@@ -31,6 +35,8 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
        _liveSiblingScanner = liveSiblingScanner ?? LiveSiblingScanner(),
        _launchServiceTeardown =
            launchServiceTeardown ?? LaunchServiceTeardown(home: home),
+       _launchServicesRegistration =
+           launchServicesRegistration ?? LaunchServicesRegistration(),
        _trash = trash,
        _log = log ?? OperationLog(home: home);
 
@@ -40,6 +46,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final SizeProbe _sizeProbe;
   final LiveSiblingScanner _liveSiblingScanner;
   final LaunchServiceTeardown _launchServiceTeardown;
+  final LaunchServicesRegistration _launchServicesRegistration;
   final Trash _trash;
   final OperationLog _log;
 
@@ -146,6 +153,20 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         continue;
       }
 
+      // Clear the app's own stale entry from LaunchServices' database while
+      // its bundle still exists on disk, exactly where Mole's
+      // `unregister_app_bundle` runs — right after the agent unload, still
+      // ahead of the actual file move. An unregister failure other than a
+      // timeout is not worth stopping for: it just leaves a harmless stale
+      // entry the batch-level `refresh()` below can still clear.
+      final unregister = await _launchServicesRegistration.unregisterApp(
+        app.path,
+      );
+      if (unregister == LaunchTeardownResult.timedOut) {
+        notAttempted[app.path] = _lsregisterTimedOut;
+        continue;
+      }
+
       toRemove.add(app.path);
       sizeByPath[app.path] = app.sizeBytes;
       for (final leftover in leftovers) {
@@ -159,6 +180,14 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
           : await _trash.moveToTrash(toRemove),
       ...notAttempted,
     };
+
+    if (toRemove.isNotEmpty) {
+      // Rebuilding the whole LaunchServices database can be slow and its
+      // outcome is never worth waiting on — fire it and move on, matching
+      // Mole's own disowned background job, which runs after a batch that
+      // actually removed something.
+      unawaited(_launchServicesRegistration.refresh());
+    }
 
     for (final path in toRemove) {
       final refusal = failures[path];
@@ -189,3 +218,5 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
 
 const _teardownTimedOut =
     'launchctl did not answer in time; nothing was removed for this app';
+const _lsregisterTimedOut =
+    'lsregister did not answer in time; nothing was removed for this app';
