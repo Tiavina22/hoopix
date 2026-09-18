@@ -12,6 +12,8 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: any
+  package_info_plus: ^8.0.0
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
@@ -22,6 +24,12 @@ dev_dependencies:
 flutter:
   generate: true
   uses-material-design: true
+
+  # Folder-level (not per-file) so a future contributor's avatar needs no
+  # pubspec edit — only a new Contributor entry.
+  assets:
+    - assets/creators/
+    - assets/contributors/
 
   fonts:
     - family: Manrope

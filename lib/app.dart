@@ -4,6 +4,7 @@ import 'package:hoopix/core/locale/locale_controller.dart';
 import 'package:hoopix/core/navigation/app_shell.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/theme_controller.dart';
+import 'package:hoopix/features/about/presentation/widgets/about_menu_listener.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
 /// hoopix's top-level widget: theme + locale + the seven-section shell.
@@ -18,6 +19,10 @@ class HoopixApp extends StatefulWidget {
 class _HoopixAppState extends State<HoopixApp> {
   final _themeController = ThemeController();
   final _localeController = LocaleController();
+
+  /// Lets the native "About hoopix" menu item open a dialog from outside
+  /// the widget tree; see [AboutMenuListener].
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void dispose() {
@@ -34,23 +39,27 @@ class _HoopixAppState extends State<HoopixApp> {
         return ValueListenableBuilder<Locale>(
           valueListenable: _localeController,
           builder: (context, locale, _) {
-            return MaterialApp(
-              title: 'Hoopix',
-              debugShowCheckedModeBanner: false,
-              themeMode: themeMode,
-              theme: HoopixTheme.light(),
-              darkTheme: HoopixTheme.dark(),
-              locale: locale,
-              supportedLocales: AppLocalizations.supportedLocales,
-              localizationsDelegates: const [
-                AppLocalizations.delegate,
-                GlobalMaterialLocalizations.delegate,
-                GlobalWidgetsLocalizations.delegate,
-                GlobalCupertinoLocalizations.delegate,
-              ],
-              home: AppShell(
-                themeController: _themeController,
-                localeController: _localeController,
+            return AboutMenuListener(
+              navigatorKey: _navigatorKey,
+              child: MaterialApp(
+                navigatorKey: _navigatorKey,
+                title: 'Hoopix',
+                debugShowCheckedModeBanner: false,
+                themeMode: themeMode,
+                theme: HoopixTheme.light(),
+                darkTheme: HoopixTheme.dark(),
+                locale: locale,
+                supportedLocales: AppLocalizations.supportedLocales,
+                localizationsDelegates: const [
+                  AppLocalizations.delegate,
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                home: AppShell(
+                  themeController: _themeController,
+                  localeController: _localeController,
+                ),
               ),
             );
           },

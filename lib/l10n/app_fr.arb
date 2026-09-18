@@ -181,5 +181,14 @@
   "historyOutcomeTrashed": "Supprimé",
   "historyOutcomeRefused": "Refusé",
   "historyOutcomeSkipped": "Ignoré",
-  "historyOutcomeCleared": "Nettoyé"
+  "historyOutcomeCleared": "Nettoyé",
+
+  "aboutTagline": "Application gratuite et open source de nettoyage et de suivi de l'état du système pour macOS.",
+  "aboutVersion": "Version {version}",
+  "aboutCreatedBy": "Créé par {name}",
+  "aboutContributorsTitle": "Contributeurs",
+  "aboutLicense": "Sous licence GNU GPLv3",
+  "aboutClose": "Fermer",
+  "aboutCardTitle": "À propos",
+  "aboutCardAction": "À propos de Hoopix"
 }

@@ -5,6 +5,7 @@ import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/theme/theme_controller.dart';
 import 'package:hoopix/core/widgets/metric_card.dart';
+import 'package:hoopix/features/about/presentation/widgets/about_dialog.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
 /// App preferences: the light/dark switch and the language switch, applied
@@ -36,9 +37,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           Text(
             l10n.sectionSettingsLabel,
-            style: HoopixType.largeTitle.copyWith(
-              color: palette.labelPrimary,
-            ),
+            style: HoopixType.largeTitle.copyWith(color: palette.labelPrimary),
           ),
           const SizedBox(height: HoopixSpacing.xxl),
           MetricCard(
@@ -50,8 +49,40 @@ class SettingsScreen extends StatelessWidget {
             title: l10n.languageCardTitle,
             child: _LanguageRow(localeController),
           ),
+          const SizedBox(height: HoopixSpacing.lg),
+          MetricCard(title: l10n.aboutCardTitle, child: const _AboutRow()),
         ],
       ),
+    );
+  }
+}
+
+class _AboutRow extends StatelessWidget {
+  const _AboutRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final l10n = AppLocalizations.of(context)!;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            l10n.aboutTagline,
+            style: HoopixType.body.copyWith(color: palette.labelSecondary),
+          ),
+        ),
+        const SizedBox(width: HoopixSpacing.md),
+        TextButton(
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => const HoopixAboutDialog(),
+          ),
+          style: TextButton.styleFrom(foregroundColor: palette.brand),
+          child: Text(l10n.aboutCardAction, style: HoopixType.body),
+        ),
+      ],
     );
   }
 }

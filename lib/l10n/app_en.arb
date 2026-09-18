@@ -450,5 +450,28 @@
   "historyOutcomeTrashed": "Trashed",
   "historyOutcomeRefused": "Refused",
   "historyOutcomeSkipped": "Skipped",
-  "historyOutcomeCleared": "Cleared"
+  "historyOutcomeCleared": "Cleared",
+
+  "aboutTagline": "Free, open-source macOS cleanup and system-health app.",
+  "aboutVersion": "Version {version}",
+  "@aboutVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutCreatedBy": "Created by {name}",
+  "@aboutCreatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutContributorsTitle": "Contributors",
+  "aboutLicense": "Licensed under the GNU GPLv3",
+  "aboutClose": "Close",
+  "aboutCardTitle": "About",
+  "aboutCardAction": "About Hoopix"
 }
