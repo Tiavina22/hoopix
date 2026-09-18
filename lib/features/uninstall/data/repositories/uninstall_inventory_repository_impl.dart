@@ -2,6 +2,7 @@ import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
@@ -20,6 +21,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     UninstallLeftoverDiscovery? leftoverDiscovery,
     SizeProbe? sizeProbe,
     LiveSiblingScanner? liveSiblingScanner,
+    LaunchServiceTeardown? launchServiceTeardown,
     Trash trash = const Trash(),
     OperationLog? log,
   }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
@@ -27,6 +29,8 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
        _liveSiblingScanner = liveSiblingScanner ?? LiveSiblingScanner(),
+       _launchServiceTeardown =
+           launchServiceTeardown ?? LaunchServiceTeardown(home: home),
        _trash = trash,
        _log = log ?? OperationLog(home: home);
 
@@ -35,6 +39,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final UninstallLeftoverDiscovery _leftoverDiscovery;
   final SizeProbe _sizeProbe;
   final LiveSiblingScanner _liveSiblingScanner;
+  final LaunchServiceTeardown _launchServiceTeardown;
   final Trash _trash;
   final OperationLog _log;
 
@@ -77,8 +82,17 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
 
     final toRemove = <String>[];
     final sizeByPath = <String, int?>{};
+    final notAttempted = <String, String>{};
 
     for (final app in approved) {
+      if (notAttempted.isNotEmpty) {
+        // launchd stopped answering for an earlier app; Mole abandons the
+        // rest of the batch on the same signal rather than keep issuing
+        // unloads that will time out too.
+        notAttempted[app.path] = _teardownTimedOut;
+        continue;
+      }
+
       final scanResult = await _liveSiblingScanner.scan(
         home: home,
         bundleId: app.bundleId,
@@ -119,6 +133,19 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         appName: effectiveAppName,
       );
 
+      // Stop the app's jobs before any of its files move, as Mole's
+      // `stop_launch_services` does ahead of `remove_file_list`. Uses the
+      // same possibly-demoted bundle id as discovery, so a surviving
+      // sibling's own agents are never unloaded by bundle id.
+      final teardown = await _launchServiceTeardown.stop(
+        bundleId: effectiveBundleId,
+        appPath: app.path,
+      );
+      if (teardown == LaunchTeardownResult.timedOut) {
+        notAttempted[app.path] = _teardownTimedOut;
+        continue;
+      }
+
       toRemove.add(app.path);
       sizeByPath[app.path] = app.sizeBytes;
       for (final leftover in leftovers) {
@@ -126,7 +153,12 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       }
     }
 
-    final failures = await _trash.moveToTrash(toRemove);
+    final failures = {
+      ...toRemove.isEmpty
+          ? const <String, String>{}
+          : await _trash.moveToTrash(toRemove),
+      ...notAttempted,
+    };
 
     for (final path in toRemove) {
       final refusal = failures[path];
@@ -141,6 +173,19 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       );
     }
 
+    for (final entry in notAttempted.entries) {
+      _log.record(
+        command: 'uninstall',
+        outcome: OperationOutcome.refused,
+        targetPath: entry.key,
+        detail: entry.value,
+        sizeBytes: sizeByPath[entry.key],
+      );
+    }
+
     return failures;
   }
 }
+
+const _teardownTimedOut =
+    'launchctl did not answer in time; nothing was removed for this app';

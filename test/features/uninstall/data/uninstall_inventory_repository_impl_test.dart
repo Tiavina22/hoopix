@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
+import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
@@ -83,6 +85,7 @@ void main() {
 
   UninstallInventoryRepositoryImpl repositoryWith({
     required Map<String, ProcessResult> responses,
+    ProcessRunner? launchctl,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -95,7 +98,39 @@ void main() {
       leftoverDiscovery: UninstallLeftoverDiscovery(),
       sizeProbe: SizeProbe(probe),
       liveSiblingScanner: LiveSiblingScanner(probe: probe, directory: redirect),
+      // Never the real launchctl: an unconfigured fake answers "not found",
+      // which teardown treats like an ordinary unload failure.
+      launchServiceTeardown: LaunchServiceTeardown(
+        home: home.path,
+        runner: launchctl ?? probe,
+      ),
     );
+  }
+
+  Map<String, ProcessResult> myAppResponses(String appPath) {
+    final plist = '$appPath/Contents/Info.plist';
+    return {
+      'plutil -extract CFBundleIdentifier raw $plist': ProcessResult.success(
+        'com.example.MyApp\n',
+      ),
+      'plutil -extract LSBackgroundOnly raw $plist': ProcessResult.success(
+        '0\n',
+      ),
+      'plutil -extract CFBundleDisplayName raw $plist': ProcessResult.success(
+        'MyApp\n',
+      ),
+      'plutil -extract CFBundleName raw $plist': ProcessResult.success(
+        'MyApp\n',
+      ),
+    };
+  }
+
+  Future<String> makeAgent(String name, {String contents = ''}) async {
+    final file = await File(
+      '${home.path}/Library/LaunchAgents/$name',
+    ).create(recursive: true);
+    await file.writeAsString(contents);
+    return file.path;
   }
 
   test('lists an app with its leftovers and eventual size', () async {
@@ -168,109 +203,105 @@ void main() {
   });
 
   group('approve', () {
-    test(
-      'moves the app bundle and its known leftovers to the Trash when no '
-      'sibling shares its bundle id',
-      () async {
-        final app = await makeApp('MyApp');
-        final leftover = await Directory(
-          '${home.path}/Library/Application Support/MyApp',
-        ).create(recursive: true);
+    test('moves the app bundle and its known leftovers to the Trash when no '
+        'sibling shares its bundle id', () async {
+      final app = await makeApp('MyApp');
+      final leftover = await Directory(
+        '${home.path}/Library/Application Support/MyApp',
+      ).create(recursive: true);
 
-        final plist = '${app.path}/Contents/Info.plist';
-        final repository = repositoryWith(
-          responses: {
-            'plutil -extract CFBundleIdentifier raw $plist':
-                ProcessResult.success('com.example.MyApp\n'),
-            'plutil -extract LSBackgroundOnly raw $plist':
-                ProcessResult.success('0\n'),
-            'plutil -extract CFBundleDisplayName raw $plist':
-                ProcessResult.success('MyApp\n'),
-            'plutil -extract CFBundleName raw $plist': ProcessResult.success(
-              'MyApp\n',
-            ),
-          },
-        );
+      final plist = '${app.path}/Contents/Info.plist';
+      final repository = repositoryWith(
+        responses: {
+          'plutil -extract CFBundleIdentifier raw $plist':
+              ProcessResult.success('com.example.MyApp\n'),
+          'plutil -extract LSBackgroundOnly raw $plist': ProcessResult.success(
+            '0\n',
+          ),
+          'plutil -extract CFBundleDisplayName raw $plist':
+              ProcessResult.success('MyApp\n'),
+          'plutil -extract CFBundleName raw $plist': ProcessResult.success(
+            'MyApp\n',
+          ),
+        },
+      );
 
-        final trashCalls = <MethodCall>[];
-        messenger.setMockMethodCallHandler(trashChannel, (call) async {
-          trashCalls.add(call);
-          return <Object?, Object?>{};
-        });
+      final trashCalls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        trashCalls.add(call);
+        return <Object?, Object?>{};
+      });
 
-        final installedApp = InstalledApp(
-          path: app.path,
-          bundleId: 'com.example.MyApp',
-          displayName: 'MyApp',
-          sizeBytes: 2048,
-        );
+      final installedApp = InstalledApp(
+        path: app.path,
+        bundleId: 'com.example.MyApp',
+        displayName: 'MyApp',
+        sizeBytes: 2048,
+      );
 
-        final failures = await repository.approve([installedApp]);
+      final failures = await repository.approve([installedApp]);
 
-        expect(failures, isEmpty);
-        expect(trashCalls.single.arguments, {
-          'paths': [app.path, leftover.path],
-        });
-        final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
-        expect(outcomes[app.path], 'trashed');
-        expect(outcomes[leftover.path], 'trashed');
-      },
-    );
+      expect(failures, isEmpty);
+      expect(trashCalls.single.arguments, {
+        'paths': [app.path, leftover.path],
+      });
+      final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
+      expect(outcomes[app.path], 'trashed');
+      expect(outcomes[leftover.path], 'trashed');
+    });
 
-    test(
-      'narrows to the app bundle alone when a live install shares the '
-      'bundle id, leaving its own leftovers untouched',
-      () async {
-        final app = await makeApp('MyApp');
-        final sibling = await makeApp('MyApp-beta');
-        await Directory(
-          '${home.path}/Library/Application Support/MyApp',
-        ).create(recursive: true);
+    test('narrows to the app bundle alone when a live install shares the '
+        'bundle id, leaving its own leftovers untouched', () async {
+      final app = await makeApp('MyApp');
+      final sibling = await makeApp('MyApp-beta');
+      await Directory(
+        '${home.path}/Library/Application Support/MyApp',
+      ).create(recursive: true);
 
-        final plist = '${app.path}/Contents/Info.plist';
-        final siblingPlist = '${sibling.path}/Contents/Info.plist';
-        final repository = repositoryWith(
-          responses: {
-            'plutil -extract CFBundleIdentifier raw $plist':
-                ProcessResult.success('com.example.MyApp\n'),
-            'plutil -extract LSBackgroundOnly raw $plist':
-                ProcessResult.success('0\n'),
-            'plutil -extract CFBundleDisplayName raw $plist':
-                ProcessResult.success('MyApp\n'),
-            'plutil -extract CFBundleName raw $plist': ProcessResult.success(
-              'MyApp\n',
-            ),
-            'plutil -extract CFBundleIdentifier raw $siblingPlist':
-                ProcessResult.success('com.example.MyApp\n'),
-            'plutil -extract LSBackgroundOnly raw $siblingPlist':
-                ProcessResult.success('0\n'),
-            'plutil -extract CFBundleDisplayName raw $siblingPlist':
-                ProcessResult.success('MyApp Beta\n'),
-            'plutil -extract CFBundleName raw $siblingPlist':
-                ProcessResult.success('MyApp Beta\n'),
-          },
-        );
+      final plist = '${app.path}/Contents/Info.plist';
+      final siblingPlist = '${sibling.path}/Contents/Info.plist';
+      final repository = repositoryWith(
+        responses: {
+          'plutil -extract CFBundleIdentifier raw $plist':
+              ProcessResult.success('com.example.MyApp\n'),
+          'plutil -extract LSBackgroundOnly raw $plist': ProcessResult.success(
+            '0\n',
+          ),
+          'plutil -extract CFBundleDisplayName raw $plist':
+              ProcessResult.success('MyApp\n'),
+          'plutil -extract CFBundleName raw $plist': ProcessResult.success(
+            'MyApp\n',
+          ),
+          'plutil -extract CFBundleIdentifier raw $siblingPlist':
+              ProcessResult.success('com.example.MyApp\n'),
+          'plutil -extract LSBackgroundOnly raw $siblingPlist':
+              ProcessResult.success('0\n'),
+          'plutil -extract CFBundleDisplayName raw $siblingPlist':
+              ProcessResult.success('MyApp Beta\n'),
+          'plutil -extract CFBundleName raw $siblingPlist':
+              ProcessResult.success('MyApp Beta\n'),
+        },
+      );
 
-        final trashCalls = <MethodCall>[];
-        messenger.setMockMethodCallHandler(trashChannel, (call) async {
-          trashCalls.add(call);
-          return <Object?, Object?>{};
-        });
+      final trashCalls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        trashCalls.add(call);
+        return <Object?, Object?>{};
+      });
 
-        final installedApp = InstalledApp(
-          path: app.path,
-          bundleId: 'com.example.MyApp',
-          displayName: 'MyApp',
-        );
+      final installedApp = InstalledApp(
+        path: app.path,
+        bundleId: 'com.example.MyApp',
+        displayName: 'MyApp',
+      );
 
-        final failures = await repository.approve([installedApp]);
+      final failures = await repository.approve([installedApp]);
 
-        expect(failures, isEmpty);
-        expect(trashCalls.single.arguments, {
-          'paths': [app.path],
-        });
-      },
-    );
+      expect(failures, isEmpty);
+      expect(trashCalls.single.arguments, {
+        'paths': [app.path],
+      });
+    });
 
     test('records a refusal the Trash channel reports', () async {
       final app = await makeApp('MyApp');
@@ -279,8 +310,9 @@ void main() {
         responses: {
           'plutil -extract CFBundleIdentifier raw $plist':
               ProcessResult.success('com.example.MyApp\n'),
-          'plutil -extract LSBackgroundOnly raw $plist':
-              ProcessResult.success('0\n'),
+          'plutil -extract LSBackgroundOnly raw $plist': ProcessResult.success(
+            '0\n',
+          ),
           'plutil -extract CFBundleDisplayName raw $plist':
               ProcessResult.success('MyApp\n'),
           'plutil -extract CFBundleName raw $plist': ProcessResult.success(
@@ -314,5 +346,142 @@ void main() {
 
       expect(failures, isEmpty);
     });
+
+    group('launch services', () {
+      test('unloads the app agents before anything moves, then trashes their '
+          'plists with the app', () async {
+        final app = await makeApp('MyApp');
+        final agent = await makeAgent('com.example.MyApp.helper.plist');
+        final events = <String>[];
+        final launchctl = _EventRunner(events);
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          launchctl: launchctl,
+        );
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          events.add('trash ${(call.arguments as Map)['paths']}');
+          return <Object?, Object?>{};
+        });
+
+        final failures = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(failures, isEmpty);
+        expect(events, [
+          'launchctl unload $agent',
+          'trash ${[app.path, agent]}',
+        ]);
+      });
+
+      test(
+        'refuses the app, and every app after it, when launchctl times out',
+        () async {
+          final app = await makeApp('MyApp');
+          await makeAgent('com.example.MyApp.plist');
+          const later = '/Applications/Later.app';
+          final events = <String>[];
+          final repository = repositoryWith(
+            responses: myAppResponses(app.path),
+            launchctl: _EventRunner(events, timeOut: true),
+          );
+          var trashCalled = false;
+          messenger.setMockMethodCallHandler(trashChannel, (call) async {
+            trashCalled = true;
+            return <Object?, Object?>{};
+          });
+
+          final failures = await repository.approve([
+            InstalledApp(
+              path: app.path,
+              bundleId: 'com.example.MyApp',
+              displayName: 'MyApp',
+            ),
+            const InstalledApp(
+              path: later,
+              bundleId: 'com.example.Later',
+              displayName: 'Later',
+            ),
+          ]);
+
+          expect(trashCalled, isFalse);
+          expect(failures.keys, unorderedEquals([app.path, later]));
+          expect(Directory(app.path).existsSync(), isTrue);
+          final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
+          expect(outcomes, {app.path: 'refused', later: 'refused'});
+        },
+      );
+
+      test(
+        "a live sibling keeps its bundle-id agent loaded and on disk, while "
+        "an agent pointing at the removed app's own path is unloaded",
+        () async {
+          final app = await makeApp('MyApp');
+          final sibling = await makeApp('MyApp-beta');
+          final shared = await makeAgent('com.example.MyApp.plist');
+          final ownPath = await makeAgent(
+            'net.other.launcher.plist',
+            contents: '<string>${app.path}/Contents/MacOS/MyApp</string>',
+          );
+          final siblingPlist = '${sibling.path}/Contents/Info.plist';
+          final events = <String>[];
+          final repository = repositoryWith(
+            responses: {
+              ...myAppResponses(app.path),
+              'plutil -extract CFBundleIdentifier raw $siblingPlist':
+                  ProcessResult.success('com.example.MyApp\n'),
+              'plutil -extract LSBackgroundOnly raw $siblingPlist':
+                  ProcessResult.success('0\n'),
+              'plutil -extract CFBundleDisplayName raw $siblingPlist':
+                  ProcessResult.success('MyApp Beta\n'),
+              'plutil -extract CFBundleName raw $siblingPlist':
+                  ProcessResult.success('MyApp Beta\n'),
+            },
+            launchctl: _EventRunner(events),
+          );
+          final trashed = <Object?>[];
+          messenger.setMockMethodCallHandler(trashChannel, (call) async {
+            trashed.addAll((call.arguments as Map)['paths'] as List);
+            return <Object?, Object?>{};
+          });
+
+          await repository.approve([
+            InstalledApp(
+              path: app.path,
+              bundleId: 'com.example.MyApp',
+              displayName: 'MyApp',
+            ),
+          ]);
+
+          expect(events, ['launchctl unload $ownPath']);
+          expect(trashed, [app.path]);
+          expect(File(shared).existsSync(), isTrue);
+        },
+      );
+    });
   });
+}
+
+/// Records every call as `executable args...` into a list shared with the
+/// Trash handler, so a test can assert unload-before-trash ordering.
+class _EventRunner extends ProcessRunner {
+  _EventRunner(this.events, {this.timeOut = false});
+
+  final List<String> events;
+  final bool timeOut;
+
+  @override
+  Future<ProcessResult> run(String executable, List<String> arguments) async {
+    events.add([executable, ...arguments].join(' '));
+    if (timeOut) {
+      return ProcessResult.failure(
+        ProcessFailure.timedOut(executable, const Duration(seconds: 5)),
+      );
+    }
+    return ProcessResult.success('');
+  }
 }
