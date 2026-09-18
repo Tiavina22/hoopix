@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'process_failure.dart';
@@ -45,11 +46,16 @@ class ProcessRunner {
       );
     }
 
+    // Malformed bytes become U+FFFD instead of throwing: a file name that
+    // is not valid UTF-8 is ordinary `find`/`du` output on a real Mac, and a
+    // throwing decoder turned it into an unhandled exception that killed the
+    // whole scan. A mangled name can only ever point at a path that does not
+    // exist, so nothing downstream can act on a different file because of it.
     final stdoutFuture = process.stdout
-        .transform(const SystemEncoding().decoder)
+        .transform(const Utf8Decoder(allowMalformed: true))
         .join();
     final stderrFuture = process.stderr
-        .transform(const SystemEncoding().decoder)
+        .transform(const Utf8Decoder(allowMalformed: true))
         .join();
 
     final int exitCode;

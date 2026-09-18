@@ -51,6 +51,29 @@ void main() {
       expect(result.failure!.kind, ProcessFailureKind.nonZeroExit);
     });
 
+    // A file name that is not valid UTF-8 (a Latin-1 download, an old
+    // archive) is ordinary `find`/`du` output on a real Mac. It must come
+    // back as text with a replacement character, never crash the scan.
+    test('survives output that is not valid UTF-8', () async {
+      final result = await const ProcessRunner().run('sh', [
+        '-c',
+        r"printf 'caf\351.txt\n'",
+      ]);
+
+      expect(result.isSuccess, isTrue);
+      expect(result.stdout, 'caf�.txt\n');
+    });
+
+    test('survives stderr that is not valid UTF-8', () async {
+      final result = await const ProcessRunner().run('sh', [
+        '-c',
+        r"printf 'caf\351\n' >&2; exit 1",
+      ]);
+
+      expect(result.failure!.kind, ProcessFailureKind.nonZeroExit);
+      expect(result.failure.toString(), contains('caf�'));
+    });
+
     test('carries no stdout when it timed out', () async {
       const runner = ProcessRunner(timeout: Duration(milliseconds: 100));
 
