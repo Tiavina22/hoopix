@@ -28,4 +28,14 @@ void main() {
   test('the copyright names the author, not a placeholder', () {
     expect(config, contains('Tiavina Ramilison'));
   });
+
+  test('no platform runner still carries the template identity', () {
+    for (final path in ['linux/CMakeLists.txt', 'windows/runner/Runner.rc']) {
+      expect(
+        File(path).readAsStringSync(),
+        isNot(contains('com.example')),
+        reason: path,
+      );
+    }
+  });
 }
