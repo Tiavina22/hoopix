@@ -451,6 +451,7 @@
   "historyOutcomeRefused": "Refused",
   "historyOutcomeSkipped": "Skipped",
   "historyOutcomeCleared": "Cleared",
+  "historyOutcomeApplied": "Applied",
 
   "aboutTagline": "Free, open-source macOS cleanup and system-health app.",
   "aboutVersion": "Version {version}",

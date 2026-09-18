@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +109,16 @@ void main() {
   });
 
   group('approve', () {
+    // What Purge wrote to this test's own temp home — never the real log.
+    List<Map<String, Object?>> readLog() {
+      final file = File('${home.path}/Library/Logs/hoopix/operations.log');
+      if (!file.existsSync()) return const [];
+      return [
+        for (final line in file.readAsLinesSync())
+          if (line.trim().isNotEmpty) jsonDecode(line) as Map<String, Object?>,
+      ];
+    }
+
     Future<PurgeCandidate> candidateFor(Directory artifact) async {
       final identity = PurgeIdentity(
         probe: FakeProcessRunner({
@@ -143,6 +154,15 @@ void main() {
 
       expect(failures, isEmpty);
       expect(artifact.existsSync(), isFalse);
+
+      // A permanent delete is on the record, with its size, as `cleared`:
+      // there is nothing in the Trash to put back.
+      final entry = readLog().single;
+      expect(entry['command'], 'purge');
+      expect(entry['outcome'], 'cleared');
+      expect(entry['path'], artifact.path);
+      expect(entry['sizeBytes'], 100);
+      expect(entry.containsKey('detail'), isFalse);
     });
 
     test('refuses when the target identity has changed since scan', () async {
@@ -161,6 +181,10 @@ void main() {
 
       expect(failures[artifact.path], 'changed since scan');
       expect(artifact.existsSync(), isTrue);
+
+      final entry = readLog().single;
+      expect(entry['outcome'], 'refused');
+      expect(entry['detail'], 'changed since scan');
     });
 
     test('refuses a candidate that no longer exists', () async {
@@ -171,6 +195,7 @@ void main() {
       final failures = await repository().approve([candidate]);
 
       expect(failures[candidate.path], 'no longer exists');
+      expect(readLog().single['outcome'], 'refused');
     });
 
     test('refuses a candidate that is now protected', () async {

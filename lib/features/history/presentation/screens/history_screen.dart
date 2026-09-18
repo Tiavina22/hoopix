@@ -312,6 +312,11 @@ _OutcomeStyle _outcomeStyle(
     color: palette.brand,
     label: l10n.historyOutcomeCleared,
   ),
+  OperationOutcome.applied => _OutcomeStyle(
+    icon: Icons.bolt_outlined,
+    color: palette.brand,
+    label: l10n.historyOutcomeApplied,
+  ),
 };
 
 class _Badge extends StatelessWidget {

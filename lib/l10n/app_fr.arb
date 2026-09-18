@@ -182,6 +182,7 @@
   "historyOutcomeRefused": "Refusé",
   "historyOutcomeSkipped": "Ignoré",
   "historyOutcomeCleared": "Nettoyé",
+  "historyOutcomeApplied": "Appliqué",
 
   "aboutTagline": "Application gratuite et open source de nettoyage et de suivi de l'état du système pour macOS.",
   "aboutVersion": "Version {version}",

@@ -1,3 +1,4 @@
+import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/features/optimize/data/datasources/cache_refresh_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/coreduet_cleanup_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/disk_permissions_repair_task.dart';
@@ -19,6 +20,7 @@ import 'package:hoopix/features/optimize/data/datasources/spotlight_index_optimi
 import 'package:hoopix/features/optimize/data/datasources/spotlight_orphan_rules_cleanup_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/sqlite_vacuum_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/system_maintenance_task.dart';
+import 'package:hoopix/features/optimize/domain/entities/optimize_log_entry.dart';
 import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 import 'package:hoopix/features/optimize/domain/repositories/optimize_repository.dart';
 
@@ -46,7 +48,9 @@ class OptimizeRepositoryImpl implements OptimizeRepository {
   OptimizeRepositoryImpl({
     required String home,
     List<OptimizeTaskRunner>? tasks,
-  }) : _tasks = tasks ?? _defaultTasks(home);
+    OperationLog? log,
+  }) : _tasks = tasks ?? _defaultTasks(home),
+       _log = log ?? OperationLog(home: home);
 
   static List<OptimizeTaskRunner> _defaultTasks(String home) {
     final dnsFlushTracker = DnsFlushTracker();
@@ -74,6 +78,7 @@ class OptimizeRepositoryImpl implements OptimizeRepository {
   }
 
   final List<OptimizeTaskRunner> _tasks;
+  final OperationLog _log;
 
   @override
   List<OptimizeTask> get catalog => [for (final t in _tasks) t.task];
@@ -81,7 +86,22 @@ class OptimizeRepositoryImpl implements OptimizeRepository {
   @override
   Stream<OptimizeTaskResult> runAll() async* {
     for (final t in _tasks) {
-      yield await t.run();
+      final result = await t.run();
+      _record(result);
+      yield result;
     }
+  }
+
+  /// One record per task that changed, tried to change, or was held back on
+  /// purpose. A task has no path, so its readable name stands in for one.
+  void _record(OptimizeTaskResult result) {
+    final entry = optimizeLogEntryFor(result);
+    if (entry == null) return;
+    _log.record(
+      command: 'optimize',
+      outcome: entry.outcome,
+      targetPath: result.task.name,
+      detail: entry.detail,
+    );
   }
 }

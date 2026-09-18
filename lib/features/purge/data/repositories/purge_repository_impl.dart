@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/purge/data/datasources/purge_identity.dart';
@@ -26,13 +27,15 @@ class PurgeRepositoryImpl implements PurgeRepository {
     PurgeIdentity? identity,
     SizeProbe? sizeProbe,
     Directory Function(String path)? directory,
+    OperationLog? log,
   }) : _discovery = discovery ?? PurgeDiscovery(home: home),
        _scanner = scanner ?? PurgeTargetScanner(),
        _activityClassifier = activityClassifier ?? PurgeActivityClassifier(),
        _identity = identity ?? PurgeIdentity(),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
-       _directory = directory ?? Directory.new;
+       _directory = directory ?? Directory.new,
+       _log = log ?? OperationLog(home: home);
 
   final String home;
   final PurgeDiscovery _discovery;
@@ -41,6 +44,7 @@ class PurgeRepositoryImpl implements PurgeRepository {
   final PurgeIdentity _identity;
   final SizeProbe _sizeProbe;
   final Directory Function(String path) _directory;
+  final OperationLog _log;
 
   @override
   Stream<PurgePlan> watchPlan() async* {
@@ -100,18 +104,35 @@ class PurgeRepositoryImpl implements PurgeRepository {
       final failure = await _revalidationFailure(candidate);
       if (failure != null) {
         failures[candidate.path] = failure;
+        _record(candidate, OperationOutcome.refused, detail: failure);
         continue;
       }
 
       try {
         await _directory(candidate.path).delete(recursive: true);
+        // A permanent delete, not a Trash move: nothing to put back, which
+        // is what `cleared` says.
+        _record(candidate, OperationOutcome.cleared);
       } on FileSystemException catch (error) {
         failures[candidate.path] = error.message;
+        _record(candidate, OperationOutcome.refused, detail: error.message);
       }
     }
 
     return failures;
   }
+
+  void _record(
+    PurgeCandidate candidate,
+    OperationOutcome outcome, {
+    String? detail,
+  }) => _log.record(
+    command: 'purge',
+    outcome: outcome,
+    targetPath: candidate.path,
+    detail: detail,
+    sizeBytes: candidate.sizeBytes,
+  );
 
   /// Null when [candidate] is still exactly what the scan found and still
   /// eligible; otherwise a failure message. Every check Mole re-runs

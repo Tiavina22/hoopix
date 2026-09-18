@@ -4,9 +4,15 @@ import 'dart:io';
 /// What happened to one path during a run.
 ///
 /// [cleared] is distinct from [trashed]: it means the path was reclaimed by
-/// running its owning tool's own cache-clean command rather than a Trash
-/// move, so — unlike [trashed] — it cannot be put back.
-enum OperationOutcome { trashed, refused, skipped, cleared }
+/// running its owning tool's own cache-clean command, or deleted outright,
+/// rather than moved to the Trash, so — unlike [trashed] — it cannot be put
+/// back.
+///
+/// [applied] is for a maintenance action that has no path to trash or clear:
+/// it ran and changed something. [refused] also covers an action that was
+/// attempted and did not complete, the same "did not go through" meaning it
+/// already has for a refused Trash move.
+enum OperationOutcome { trashed, refused, skipped, cleared, applied }
 
 /// An append-only record of everything a destructive command did, and
 /// everything it decided not to do.

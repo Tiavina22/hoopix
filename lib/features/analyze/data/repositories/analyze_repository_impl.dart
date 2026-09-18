@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:hoopix/core/platform/directory_scanner.dart';
+import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/analyze/data/datasources/directory_cache.dart';
 import 'package:hoopix/features/analyze/data/datasources/directory_local_datasource.dart';
@@ -51,7 +52,8 @@ class AnalyzeRepositoryImpl implements AnalyzeRepository {
       _trash = const TrashLocalDataSource(),
       _localSnapshot = const LocalSnapshotLocalDataSource(
         ProcessRunner(timeout: _snapshotTimeout),
-      );
+      ),
+      _log = _defaultLog();
 
   /// Test-only seam: build with hand-picked datasources (e.g. wired to a
   /// fake [ProcessRunner]) instead of the default local ones.
@@ -62,12 +64,14 @@ class AnalyzeRepositoryImpl implements AnalyzeRepository {
     required RevealLocalDataSource reveal,
     required TrashLocalDataSource trash,
     required LocalSnapshotLocalDataSource localSnapshot,
+    OperationLog? log,
   }) : _overview = overview,
        _directory = directory,
        _largeFiles = largeFiles,
        _reveal = reveal,
        _trash = trash,
-       _localSnapshot = localSnapshot;
+       _localSnapshot = localSnapshot,
+       _log = log;
 
   final OverviewLocalDataSource _overview;
   final DirectoryLocalDataSource _directory;
@@ -76,9 +80,36 @@ class AnalyzeRepositoryImpl implements AnalyzeRepository {
   final TrashLocalDataSource _trash;
   final LocalSnapshotLocalDataSource _localSnapshot;
 
+  /// Where Trash moves are recorded. Null means "do not record": only the
+  /// default constructor points this at the real log, so a test that builds
+  /// the repository by hand can never write to the user's own history unless
+  /// it hands over a log of its own.
+  final OperationLog? _log;
+
+  static OperationLog? _defaultLog() {
+    final home = Platform.environment['HOME'];
+    return home == null ? null : OperationLog(home: home);
+  }
+
   @override
-  Future<Map<String, String>> moveToTrash(List<String> paths) =>
-      _trash.moveToTrash(paths);
+  Future<Map<String, String>> moveToTrash(List<String> paths) async {
+    final failures = await _trash.moveToTrash(paths);
+    final log = _log;
+    if (log != null) {
+      for (final path in paths) {
+        final refusal = failures[path];
+        log.record(
+          command: 'analyze',
+          outcome: refusal != null
+              ? OperationOutcome.refused
+              : OperationOutcome.trashed,
+          targetPath: path,
+          detail: refusal,
+        );
+      }
+    }
+    return failures;
+  }
 
   @override
   Future<List<AnalyzeEntry>> findLargeFiles(String root) =>

@@ -105,6 +105,36 @@ void main() {
     expect(find.text('Yesterday'), findsOneWidget);
   });
 
+  testWidgets('shows every outcome with its own label', (tester) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      harness(
+        _FakeHistoryRepository([
+          for (final outcome in OperationOutcome.values)
+            OperationHistoryEntry(
+              at: now,
+              command: 'optimize',
+              outcome: outcome,
+              path: 'Task ${outcome.name}',
+            ),
+        ]),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // One label per outcome, including the maintenance one Optimize writes.
+    for (final label in [
+      'Trashed',
+      'Refused',
+      'Skipped',
+      'Cleared',
+      'Applied',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows the error message when reading the log fails', (
     tester,
   ) async {
