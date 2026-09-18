@@ -8,6 +8,7 @@ import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/brew_cask.dart';
 import 'package:hoopix/features/uninstall/data/datasources/dock_cleanup.dart';
+import 'package:hoopix/features/uninstall/data/datasources/finder_trash.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
@@ -115,6 +116,7 @@ void main() {
     BrewCask? brewCask,
     DockCleanup? dockCleanup,
     RemovalWarnings? removalWarnings,
+    FinderTrash? finderTrash,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -171,6 +173,9 @@ void main() {
       removalWarnings:
           removalWarnings ??
           RemovalWarnings(runner: probe, listNames: (_) => const []),
+      // Never the real Finder: the fake cannot run osascript, and every
+      // fixture app lives outside /Applications anyway.
+      finderTrash: finderTrash ?? FinderTrash(runner: probe),
     );
   }
 
@@ -311,9 +316,18 @@ void main() {
       final failures = await failuresOf(repository, [installedApp]);
 
       expect(failures, isEmpty);
-      expect(trashCalls.single.arguments, {
-        'paths': [app.path, leftover.path],
-      });
+      // The app first, and its leftovers only once it is gone.
+      expect(
+        [for (final call in trashCalls) call.arguments],
+        [
+          {
+            'paths': [app.path],
+          },
+          {
+            'paths': [leftover.path],
+          },
+        ],
+      );
       final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
       expect(outcomes[app.path], 'trashed');
       expect(outcomes[leftover.path], 'trashed');
@@ -408,6 +422,110 @@ void main() {
       expect(entries.single['outcome'], 'refused');
     });
 
+    test("a refused app keeps every leftover: nothing of it moves while it "
+        "stays installed", () async {
+      final app = await makeApp('MyApp');
+      final leftover = await Directory(
+        '${home.path}/Library/Application Scripts/com.example.MyApp',
+      ).create(recursive: true);
+      final repository = repositoryWith(responses: myAppResponses(app.path));
+      final trashCalls = <List<Object?>>[];
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        final paths = (call.arguments as Map)['paths'] as List;
+        trashCalls.add(paths);
+        return {
+          for (final p in paths)
+            if (p == app.path) p: 'you don’t have permission to access it',
+        };
+      });
+
+      final failures = await failuresOf(repository, [
+        InstalledApp(
+          path: app.path,
+          bundleId: 'com.example.MyApp',
+          displayName: 'MyApp',
+        ),
+      ]);
+
+      expect(trashCalls, [
+        [app.path],
+      ]);
+      expect(failures.keys, [app.path]);
+      expect(leftover.existsSync(), isTrue);
+      final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
+      expect(outcomes[leftover.path], 'skipped');
+    });
+
+    test(
+      'retries a refused app through Finder, then moves its leftovers',
+      () async {
+        final app = await makeApp('MyApp');
+        final leftover = await Directory(
+          '${home.path}/Library/Application Scripts/com.example.MyApp',
+        ).create(recursive: true);
+        final finder = _RecordingFinder(removes: true);
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          finderTrash: finder,
+        );
+        final trashCalls = <List<Object?>>[];
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          final paths = (call.arguments as Map)['paths'] as List;
+          trashCalls.add(paths);
+          return {
+            for (final p in paths)
+              if (p == app.path) p: 'you don’t have permission to access it',
+          };
+        });
+
+        final failures = await failuresOf(repository, [
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(failures, isEmpty);
+        expect(finder.moved, [app.path]);
+        expect(trashCalls, [
+          [app.path],
+          [leftover.path],
+        ]);
+        final entries = {for (final e in readLog()) e['path']: e};
+        expect(entries[app.path]?['outcome'], 'trashed');
+        expect(entries[app.path]?['detail'], contains('through Finder'));
+      },
+    );
+
+    test('an app Finder could not move keeps its leftovers too', () async {
+      final app = await makeApp('MyApp');
+      final leftover = await Directory(
+        '${home.path}/Library/Application Scripts/com.example.MyApp',
+      ).create(recursive: true);
+      final finder = _RecordingFinder(removes: false);
+      final repository = repositoryWith(
+        responses: myAppResponses(app.path),
+        finderTrash: finder,
+      );
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        final paths = (call.arguments as Map)['paths'] as List;
+        return {for (final p in paths) p: 'you don’t have permission'};
+      });
+
+      final failures = await failuresOf(repository, [
+        InstalledApp(
+          path: app.path,
+          bundleId: 'com.example.MyApp',
+          displayName: 'MyApp',
+        ),
+      ]);
+
+      expect(finder.moved, [app.path]);
+      expect(failures.keys, [app.path]);
+      expect(leftover.existsSync(), isTrue);
+    });
+
     test('an empty approval is a no-op', () async {
       final repository = repositoryWith(responses: const {});
 
@@ -443,7 +561,8 @@ void main() {
         expect(failures, isEmpty);
         expect(events, [
           'launchctl unload $agent',
-          'trash ${[app.path, agent]}',
+          'trash ${[app.path]}',
+          'trash ${[agent]}',
         ]);
       });
 
@@ -1373,5 +1492,21 @@ class _RecordingDock extends DockCleanup {
     events.add('dock');
     this.targets.addAll(targets);
     return false;
+  }
+}
+
+/// Stands in for Finder's elevated Trash move: records the attempt and,
+/// when [removes], reports the bundle gone as a password-authorized Finder
+/// move would. Never touches the real Finder.
+class _RecordingFinder extends FinderTrash {
+  _RecordingFinder({required this.removes});
+
+  final bool removes;
+  final moved = <String>[];
+
+  @override
+  Future<bool> moveApplication(String appPath) async {
+    moved.add(appPath);
+    return removes;
   }
 }

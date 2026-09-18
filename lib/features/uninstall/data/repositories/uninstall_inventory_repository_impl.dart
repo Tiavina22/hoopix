@@ -6,6 +6,7 @@ import 'package:hoopix/core/platform/trash.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/brew_cask.dart';
 import 'package:hoopix/features/uninstall/data/datasources/dock_cleanup.dart';
+import 'package:hoopix/features/uninstall/data/datasources/finder_trash.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
@@ -35,6 +36,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     BrewCask? brewCask,
     DockCleanup? dockCleanup,
     RemovalWarnings? removalWarnings,
+    FinderTrash? finderTrash,
     Trash trash = const Trash(),
     OperationLog? log,
   }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
@@ -50,6 +52,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
        _brewCask = brewCask ?? BrewCask(),
        _dockCleanup = dockCleanup ?? DockCleanup(home: home),
        _removalWarnings = removalWarnings ?? RemovalWarnings(),
+       _finderTrash = finderTrash ?? FinderTrash(),
        _trash = trash,
        _log = log ?? OperationLog(home: home);
 
@@ -64,6 +67,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final BrewCask _brewCask;
   final DockCleanup _dockCleanup;
   final RemovalWarnings _removalWarnings;
+  final FinderTrash _finderTrash;
   final Trash _trash;
   final OperationLog _log;
 
@@ -116,7 +120,10 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     // preview window" rule for bundle-id teardown.
     final freshInventory = await _appDiscovery.discover();
 
-    final toRemove = <String>[];
+    // Mole removes each app first and its leftovers only once the app is
+    // really gone, so a refused bundle never loses its data underneath it.
+    final appBundles = <String>[];
+    final leftoversByApp = <String, List<String>>{};
     final sizeByPath = <String, int?>{};
     final notAttempted = <String, String>{};
     final helperIdsByApp = <String, List<String>>{};
@@ -281,12 +288,10 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
             sizeBytes: app.sizeBytes,
           );
           // Whatever the zap already removed is gone; move what it left.
-          toRemove.addAll(
-            _leftoverDiscovery.discover(
-              home: home,
-              bundleId: effectiveBundleId,
-              appName: effectiveAppName,
-            ),
+          leftoversByApp[app.path] = _leftoverDiscovery.discover(
+            home: home,
+            bundleId: effectiveBundleId,
+            appName: effectiveAppName,
           );
           continue;
         }
@@ -302,18 +307,40 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         }
       }
 
-      toRemove.add(app.path);
-      for (final leftover in leftovers) {
-        toRemove.add(leftover);
+      appBundles.add(app.path);
+      leftoversByApp[app.path] = leftovers;
+    }
+
+    final appFailures = <String, String>{
+      if (appBundles.isNotEmpty) ...await _trash.moveToTrash(appBundles),
+    };
+
+    // Mole's retry for a bundle the direct move was denied on — every Mac
+    // App Store app is root-owned — through Finder, which asks for the
+    // administrator password itself. Only top-level /Applications bundles.
+    final viaFinder = <String>{};
+    for (final path in appBundles) {
+      if (!appFailures.containsKey(path)) continue;
+      if (await _finderTrash.moveApplication(path)) {
+        appFailures.remove(path);
+        viaFinder.add(path);
       }
     }
 
-    final failures = {
-      ...toRemove.isEmpty
-          ? const <String, String>{}
-          : await _trash.moveToTrash(toRemove),
-      ...notAttempted,
+    final goneApps = {
+      ...brewed,
+      for (final path in appBundles)
+        if (!appFailures.containsKey(path)) path,
     };
+    final leftovers = [
+      for (final entry in leftoversByApp.entries)
+        if (goneApps.contains(entry.key)) ...entry.value,
+    ];
+    final leftoverFailures = leftovers.isEmpty
+        ? const <String, String>{}
+        : await _trash.moveToTrash(leftovers);
+
+    final failures = {...appFailures, ...leftoverFailures, ...notAttempted};
 
     // Mole boots helpers out only after the app itself was removed, so a
     // refused move never leaves a still-installed app with its helper
@@ -326,9 +353,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
 
     final removedApps = [
       for (final app in approved)
-        if (brewed.contains(app.path) ||
-            (toRemove.contains(app.path) && !failures.containsKey(app.path)))
-          app,
+        if (goneApps.contains(app.path)) app,
     ];
 
     // Only an app that is really gone loses its Dock tile, keyed by the
@@ -348,7 +373,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       unawaited(_afterRemoval(dockTargets));
     }
 
-    for (final path in toRemove) {
+    for (final path in [...appBundles, ...leftovers]) {
       final refusal = failures[path];
       _log.record(
         command: 'uninstall',
@@ -356,9 +381,21 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
             ? OperationOutcome.refused
             : OperationOutcome.trashed,
         targetPath: path,
-        detail: refusal,
+        detail: refusal ?? (viaFinder.contains(path) ? _movedViaFinder : null),
         sizeBytes: sizeByPath[path],
       );
+    }
+
+    for (final entry in leftoversByApp.entries) {
+      if (goneApps.contains(entry.key)) continue;
+      for (final path in entry.value) {
+        _log.record(
+          command: 'uninstall',
+          outcome: OperationOutcome.skipped,
+          targetPath: path,
+          detail: _keptWithApp,
+        );
+      }
     }
 
     for (final entry in notAttempted.entries) {
@@ -401,6 +438,10 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     await _launchServicesRegistration.refresh();
   }
 }
+
+const _movedViaFinder =
+    'moved to the Trash through Finder after the direct move was denied';
+const _keptWithApp = 'kept: the app itself could not be removed';
 
 const _teardownTimedOut =
     'launchctl did not answer in time; nothing was removed for this app';

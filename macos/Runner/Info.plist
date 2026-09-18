@@ -23,7 +23,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>hoopix removes an uninstalled app's login item through System Events.</string>
+	<string>hoopix removes an uninstalled app's login item through System Events, and asks Finder to move an app to the Trash when macOS requires your password.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
