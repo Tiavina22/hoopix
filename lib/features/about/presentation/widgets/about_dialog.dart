@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hoopix/core/brand/hoopix_logo.dart';
+import 'package:hoopix/core/platform/app_version.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/features/about/domain/entities/contributor.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart' as launcher;
 
 const _creatorProfileUrl = 'https://github.com/Tiavina22';
@@ -26,9 +26,7 @@ class HoopixAboutDialog extends StatelessWidget {
   final Future<String> Function()? fetchVersion;
   final Future<void> Function(Uri url)? openUrl;
 
-  Future<String> _version() =>
-      fetchVersion?.call() ??
-      PackageInfo.fromPlatform().then((info) => info.version);
+  Future<String> _version() => (fetchVersion ?? readAppVersion)();
 
   Future<void> _open(Uri url) =>
       openUrl?.call(url) ??

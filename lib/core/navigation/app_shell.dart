@@ -3,6 +3,7 @@ import 'package:hoopix/core/brand/hoopix_logo.dart';
 import 'package:hoopix/core/locale/locale_controller.dart';
 import 'package:hoopix/core/navigation/hoopix_section.dart';
 import 'package:hoopix/core/navigation/shell_content_area.dart';
+import 'package:hoopix/core/navigation/sidebar_footer.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
@@ -114,7 +115,7 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          const _SidebarFooter(),
+          const SidebarFooter(),
         ],
       ),
     );
@@ -218,29 +219,6 @@ class _SidebarItemState extends State<_SidebarItem> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SidebarFooter extends StatelessWidget {
-  const _SidebarFooter();
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final l10n = AppLocalizations.of(context)!;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        HoopixSpacing.lg,
-        HoopixSpacing.md,
-        HoopixSpacing.lg,
-        HoopixSpacing.lg,
-      ),
-      child: Text(
-        l10n.openSourceFooter('0.1.0'),
-        style: HoopixType.caption.copyWith(color: palette.labelTertiary),
       ),
     );
   }
