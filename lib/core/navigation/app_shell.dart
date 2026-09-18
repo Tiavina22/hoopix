@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hoopix/core/brand/hoopix_logo.dart';
 import 'package:hoopix/core/locale/locale_controller.dart';
 import 'package:hoopix/core/navigation/hoopix_section.dart';
+import 'package:hoopix/core/navigation/shell_content_area.dart';
 import 'package:hoopix/core/theme/hoopix_metrics.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
@@ -53,7 +54,7 @@ class _AppShellState extends State<AppShell> {
             selected: _selected,
             onSelected: (section) => setState(() => _selected = section),
           ),
-          Expanded(child: _content(_selected)),
+          Expanded(child: ShellContentArea(child: _content(_selected))),
         ],
       ),
     );
