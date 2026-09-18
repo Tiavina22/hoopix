@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/login_item_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
@@ -26,6 +27,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     LiveSiblingScanner? liveSiblingScanner,
     LaunchServiceTeardown? launchServiceTeardown,
     LaunchServicesRegistration? launchServicesRegistration,
+    LoginItemTeardown? loginItemTeardown,
     Trash trash = const Trash(),
     OperationLog? log,
   }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
@@ -37,6 +39,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
            launchServiceTeardown ?? LaunchServiceTeardown(home: home),
        _launchServicesRegistration =
            launchServicesRegistration ?? LaunchServicesRegistration(),
+       _loginItemTeardown = loginItemTeardown ?? LoginItemTeardown(),
        _trash = trash,
        _log = log ?? OperationLog(home: home);
 
@@ -47,6 +50,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final LiveSiblingScanner _liveSiblingScanner;
   final LaunchServiceTeardown _launchServiceTeardown;
   final LaunchServicesRegistration _launchServicesRegistration;
+  final LoginItemTeardown _loginItemTeardown;
   final Trash _trash;
   final OperationLog _log;
 
@@ -90,13 +94,15 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     final toRemove = <String>[];
     final sizeByPath = <String, int?>{};
     final notAttempted = <String, String>{};
+    final helperIdsByApp = <String, List<String>>{};
+    String? abortReason;
 
     for (final app in approved) {
-      if (notAttempted.isNotEmpty) {
-        // launchd stopped answering for an earlier app; Mole abandons the
-        // rest of the batch on the same signal rather than keep issuing
-        // unloads that will time out too.
-        notAttempted[app.path] = _teardownTimedOut;
+      if (abortReason != null) {
+        // launchd or LaunchServices stopped answering for an earlier app;
+        // Mole abandons the rest of the batch on the same signal rather than
+        // keep issuing calls that will time out too.
+        notAttempted[app.path] = abortReason;
         continue;
       }
 
@@ -111,6 +117,13 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       // bundle-id or name-derived leftover carries the survivor's own data.
       var effectiveBundleId = 'unknown';
       var effectiveAppName = '';
+      // Mole's `guard_login`: login items match by display name only, so a
+      // surviving install that shares the name (or one the scan could not
+      // rule out) keeps its login item.
+      var removeLoginItem = false;
+      // Helper ids come from the bundle and are identical across
+      // same-bundle-id siblings, so only an unguarded app boots them out.
+      var bootoutHelpers = false;
       if (scanResult == LiveSiblingScanResult.absent) {
         // The live scanner's own search roots are a superset of
         // UninstallAppDiscovery's, so this should already agree with
@@ -126,8 +139,11 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         if (guardLevel == SiblingGuardLevel.none) {
           effectiveBundleId = app.bundleId;
           effectiveAppName = app.displayName;
+          removeLoginItem = true;
+          bootoutHelpers = true;
         } else if (guardLevel == SiblingGuardLevel.guard) {
           effectiveAppName = app.displayName;
+          removeLoginItem = true;
         }
       }
 
@@ -149,7 +165,8 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         appPath: app.path,
       );
       if (teardown == LaunchTeardownResult.timedOut) {
-        notAttempted[app.path] = _teardownTimedOut;
+        abortReason = _teardownTimedOut;
+        notAttempted[app.path] = abortReason;
         continue;
       }
 
@@ -163,8 +180,32 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         app.path,
       );
       if (unregister == LaunchTeardownResult.timedOut) {
-        notAttempted[app.path] = _lsregisterTimedOut;
+        abortReason = _lsregisterTimedOut;
+        notAttempted[app.path] = abortReason;
         continue;
+      }
+
+      // Same place as Mole's `remove_login_item`: after the LaunchServices
+      // work, before any file moves.
+      if (removeLoginItem) {
+        final loginItem = await _loginItemTeardown.removeLoginItem(
+          app.displayName,
+        );
+        if (loginItem == LaunchTeardownResult.timedOut) {
+          _log.record(
+            command: 'uninstall',
+            outcome: OperationOutcome.skipped,
+            targetPath: app.path,
+            detail: _loginItemTimedOut,
+          );
+        }
+      }
+
+      // Read while the bundle still exists; booted out only once it is gone.
+      if (bootoutHelpers) {
+        helperIdsByApp[app.path] = await _loginItemTeardown.discoverHelperIds(
+          app.path,
+        );
       }
 
       toRemove.add(app.path);
@@ -180,6 +221,15 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
           : await _trash.moveToTrash(toRemove),
       ...notAttempted,
     };
+
+    // Mole boots helpers out only after the app itself was removed, so a
+    // refused move never leaves a still-installed app with its helper
+    // stopped.
+    for (final entry in helperIdsByApp.entries) {
+      if (failures.containsKey(entry.key)) continue;
+      final bootout = await _loginItemTeardown.bootoutHelpers(entry.value);
+      if (bootout == LaunchTeardownResult.timedOut) break;
+    }
 
     if (toRemove.isNotEmpty) {
       // Rebuilding the whole LaunchServices database can be slow and its
@@ -220,3 +270,5 @@ const _teardownTimedOut =
     'launchctl did not answer in time; nothing was removed for this app';
 const _lsregisterTimedOut =
     'lsregister did not answer in time; nothing was removed for this app';
+const _loginItemTimedOut =
+    'System Events did not answer in time; its login item was left in place';

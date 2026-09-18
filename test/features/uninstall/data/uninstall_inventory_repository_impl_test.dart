@@ -9,6 +9,7 @@ import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/login_item_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_app_discovery.dart';
 import 'package:hoopix/features/uninstall/data/datasources/uninstall_leftover_discovery.dart';
 import 'package:hoopix/features/uninstall/data/repositories/uninstall_inventory_repository_impl.dart';
@@ -88,6 +89,7 @@ void main() {
     required Map<String, ProcessResult> responses,
     ProcessRunner? launchctl,
     LaunchServicesRegistration? launchServicesRegistration,
+    LoginItemTeardown? loginItemTeardown,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -114,6 +116,16 @@ void main() {
           launchServicesRegistration ??
           LaunchServicesRegistration(
             typeOf: (_) => FileSystemEntityType.notFound,
+          ),
+      // Never the real osascript or launchctl bootout: the fake answers
+      // "not found" to both, and no helper folder is ever listed, so a test
+      // can never delete one of this machine's own login items.
+      loginItemTeardown:
+          loginItemTeardown ??
+          LoginItemTeardown(
+            runner: probe,
+            scriptRunner: probe,
+            listNames: (_) => const [],
           ),
     );
   }
@@ -569,6 +581,174 @@ void main() {
         expect(events, isEmpty);
       });
     });
+
+    group('login items', () {
+      Future<String> makeHelper(Directory app) async {
+        final info = await File(
+          '${app.path}/Contents/Library/LoginItems/Helper.app/Contents/Info.plist',
+        ).create(recursive: true);
+        return info.path;
+      }
+
+      LoginItemTeardown loginWith(
+        List<String> events, {
+        Map<String, ProcessResult> responses = const {},
+        Set<String> timeOutExecutables = const {},
+      }) {
+        final runner = _EventRunner(
+          events,
+          responses: {'id -u': ProcessResult.success('501\n'), ...responses},
+          timeOutExecutables: timeOutExecutables,
+        );
+        return LoginItemTeardown(runner: runner, scriptRunner: runner);
+      }
+
+      test('removes the login item before anything moves, and boots its helper '
+          'out only once the app is gone', () async {
+        final app = await makeApp('MyApp');
+        final helperInfo = await makeHelper(app);
+        final events = <String>[];
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          loginItemTeardown: loginWith(
+            events,
+            responses: {
+              'plutil -extract CFBundleIdentifier raw $helperInfo':
+                  ProcessResult.success('com.example.MyApp.Helper\n'),
+            },
+          ),
+        );
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          events.add('trash');
+          return <Object?, Object?>{};
+        });
+
+        final failures = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(failures, isEmpty);
+        final osascript = events.indexWhere((e) => e.startsWith('osascript'));
+        final trash = events.indexOf('trash');
+        final bootout = events.indexOf(
+          'launchctl bootout gui/501/com.example.MyApp.Helper',
+        );
+        expect(events[osascript], endsWith(' MyApp'));
+        expect(osascript, lessThan(trash));
+        expect(trash, lessThan(bootout));
+      });
+
+      test(
+        'a live sibling keeps its login item and running helper untouched',
+        () async {
+          final app = await makeApp('MyApp');
+          await makeHelper(app);
+          final sibling = await makeApp('MyApp-beta');
+          final siblingPlist = '${sibling.path}/Contents/Info.plist';
+          final events = <String>[];
+          final repository = repositoryWith(
+            responses: {
+              ...myAppResponses(app.path),
+              'plutil -extract CFBundleIdentifier raw $siblingPlist':
+                  ProcessResult.success('com.example.MyApp\n'),
+              'plutil -extract LSBackgroundOnly raw $siblingPlist':
+                  ProcessResult.success('0\n'),
+              'plutil -extract CFBundleDisplayName raw $siblingPlist':
+                  ProcessResult.success('MyApp\n'),
+              'plutil -extract CFBundleName raw $siblingPlist':
+                  ProcessResult.success('MyApp\n'),
+            },
+            loginItemTeardown: loginWith(events),
+          );
+          messenger.setMockMethodCallHandler(
+            trashChannel,
+            (call) async => <Object?, Object?>{},
+          );
+
+          await repository.approve([
+            InstalledApp(
+              path: app.path,
+              bundleId: 'com.example.MyApp',
+              displayName: 'MyApp',
+            ),
+          ]);
+
+          expect(events, isEmpty);
+        },
+      );
+
+      test('a refused move leaves the helper running', () async {
+        final app = await makeApp('MyApp');
+        final helperInfo = await makeHelper(app);
+        final events = <String>[];
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          loginItemTeardown: loginWith(
+            events,
+            responses: {
+              'plutil -extract CFBundleIdentifier raw $helperInfo':
+                  ProcessResult.success('com.example.MyApp.Helper\n'),
+            },
+          ),
+        );
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          final paths = (call.arguments as Map)['paths'] as List;
+          return {for (final p in paths) p: 'in use'};
+        });
+
+        final failures = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(failures, contains(app.path));
+        expect(events.where((e) => e.startsWith('launchctl')), isEmpty);
+      });
+
+      test(
+        'a System Events timeout leaves the login item but still removes the '
+        'app, and says so in the log',
+        () async {
+          final app = await makeApp('MyApp');
+          final events = <String>[];
+          final repository = repositoryWith(
+            responses: myAppResponses(app.path),
+            loginItemTeardown: loginWith(
+              events,
+              timeOutExecutables: {'osascript'},
+            ),
+          );
+          final trashed = <Object?>[];
+          messenger.setMockMethodCallHandler(trashChannel, (call) async {
+            trashed.addAll((call.arguments as Map)['paths'] as List);
+            return <Object?, Object?>{};
+          });
+
+          final failures = await repository.approve([
+            InstalledApp(
+              path: app.path,
+              bundleId: 'com.example.MyApp',
+              displayName: 'MyApp',
+            ),
+          ]);
+
+          expect(failures, isEmpty);
+          expect(trashed, [app.path]);
+          final outcomes = [
+            for (final e in readLog())
+              if (e['path'] == app.path) e['outcome'],
+          ];
+          expect(outcomes, ['skipped', 'trashed']);
+        },
+      );
+    });
   });
 }
 
@@ -581,22 +761,28 @@ class _EventRunner extends ProcessRunner {
     this.events, {
     bool timeOut = false,
     Set<String> timeOutExecutables = const {},
-  }) : _timeOutExecutables = timeOut ? null : timeOutExecutables,
+    this.responses = const {},
+  }) : _timeOutExecutables = timeOutExecutables,
        _timeOutAll = timeOut;
 
   final List<String> events;
-  final Set<String>? _timeOutExecutables;
+  final Set<String> _timeOutExecutables;
   final bool _timeOutAll;
+
+  /// Canned answers keyed by `executable arg1 ...`; anything unlisted
+  /// succeeds with empty output.
+  final Map<String, ProcessResult> responses;
 
   @override
   Future<ProcessResult> run(String executable, List<String> arguments) async {
-    events.add([executable, ...arguments].join(' '));
-    if (_timeOutAll || (_timeOutExecutables?.contains(executable) ?? false)) {
+    final key = [executable, ...arguments].join(' ');
+    events.add(key);
+    if (_timeOutAll || _timeOutExecutables.contains(executable)) {
       return ProcessResult.failure(
         ProcessFailure.timedOut(executable, const Duration(seconds: 5)),
       );
     }
-    return ProcessResult.success('');
+    return responses[key] ?? ProcessResult.success('');
   }
 }
 
