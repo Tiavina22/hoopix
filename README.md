@@ -12,6 +12,28 @@ with the interface free and the source open.
 > implemented, and several of them delete or change real files. Read the
 > confirmation before you approve one.
 
+## Install
+
+Requires **macOS 12 (Monterey) or later on Apple Silicon** (M1 or newer). The
+current release does not run on Intel Macs.
+
+1. Download `Hoopix-<version>-macos-arm64.dmg` from the
+   [Releases](https://github.com/Tiavina22/hoopix/releases) page, and only from
+   there: Hoopix deletes files, so do not run a copy from anywhere else.
+2. Optionally check it against the `SHA256SUMS` file published with it:
+   `shasum -a 256 -c SHA256SUMS`.
+3. Open the disk image and drag **hoopix** onto **Applications**.
+
+**The first launch is blocked by macOS, and that is expected.** Hoopix is not
+signed with an Apple Developer ID and is not notarized yet, so Gatekeeper
+refuses an app it does not recognize. To allow it, either:
+
+- open **System Settings › Privacy & Security** (Security & Privacy on macOS
+  12), scroll down to the message about *hoopix*, and click **Open Anyway**; or
+- run `xattr -dr com.apple.quarantine /Applications/hoopix.app` in Terminal.
+
+You only do this once.
+
 ## What it does
 
 | Section | What it does | Can you undo it? |
@@ -97,6 +119,17 @@ flutter run -d macos
 flutter analyze
 flutter test
 ```
+
+To build the release package (a `.dmg` and a `.zip` with checksums, ad hoc
+signed, for this Mac's architecture only) into `build/dist`:
+
+```bash
+./scripts/build_macos_release.sh
+```
+
+The script builds one architecture at a time because Xcode 27's `lipo` rejects
+the multi-architecture check Flutter 3.38 makes; see the comment at the top of
+the script.
 
 The macOS App Sandbox is disabled in `macos/Runner/*.entitlements`: a system
 utility has to spawn `pmset`, `vm_stat`, and friends, and move or delete files
