@@ -116,7 +116,9 @@ class CleanSectionsLocalDataSource {
     targets.addAll(_childrenOf('$home/Library/DiagnosticReports'));
     targets.addAll(_childrenOf('$home/Library/IdentityCaches'));
     targets.addAll(_childrenOf('$home/Library/Suggestions'));
-    targets.add('$home/Library/Calendars/Calendar Cache');
+    // Not `Calendars/Calendar Cache`: CalendarAgent keeps that SQLite index
+    // open in the background, and deleting it can crash Calendar.app until
+    // logout (Mole #1508). Apple treats it as a manual troubleshooting step.
     for (final source in _childrenOf(
       '$home/Library/Application Support/AddressBook/Sources',
     )) {

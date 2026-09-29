@@ -36,6 +36,13 @@ void main() {
       expect(protects('$_home/Library/Accounts/Accounts4.sqlite'), isTrue);
     });
 
+    test('protects Calendar data and its live SQLite cache (Mole #1508)', () {
+      expect(protects('$_home/Library/Calendars'), isTrue);
+      expect(protects('$_home/Library/Calendars/Calendar Cache'), isTrue);
+      expect(protects('$_home/Library/Calendars/Calendar Cache-wal'), isTrue);
+      expect(protects('$_home/Library/Calendars/01234567-89AB-CDEF-0123-456789ABCDEF'), isTrue);
+    });
+
     test('protects iCloud Drive', () {
       expect(protects('$_home/Library/Mobile Documents/com~apple~CloudDocs'), isTrue);
     });

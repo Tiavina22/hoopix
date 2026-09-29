@@ -148,17 +148,16 @@ void main() {
   );
 
   test(
-    'proposes Calendar Cache and every AddressBook source photo cache',
+    'proposes every AddressBook source photo cache but never Calendar Cache',
     () async {
       await makeDir('Library/Application Support/AddressBook/Sources/ABC-123');
       await makeDir('Library/Application Support/AddressBook/Sources/DEF-456');
+      await makeDir('Library/Calendars/Calendar Cache');
 
       final targets = appCacheTargets();
 
-      expect(
-        targets,
-        contains('${home.path}/Library/Calendars/Calendar Cache'),
-      );
+      // CalendarAgent holds this SQLite index open (Mole #1508).
+      expect(targets.where((t) => t.contains('/Library/Calendars')), isEmpty);
       expect(
         targets,
         contains(
@@ -443,8 +442,6 @@ void main() {
   );
 
   test('a missing home tree does not throw', () {
-    // Library/Calendars/Calendar Cache is proposed unconditionally, like the
-    // other single-file targets — the funnel is what checks existence.
     expect(appCacheTargets, returnsNormally);
   });
 }

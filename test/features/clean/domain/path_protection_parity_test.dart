@@ -27,6 +27,8 @@ const _moleVerdicts = <(String, bool)>[
   ('/Users/tester/Library/Preferences/com.apple.dock.plist', true),
   ('/Users/tester/Library/Keychains/login.keychain-db', true),
   ('/Users/tester/Library/Mail/V10', true),
+  ('/Users/tester/Library/Calendars/Calendar Cache', true),
+  ('/Users/tester/Library/Calendars/Calendar Cache-wal', true),
   ('/Users/tester/Library/Mobile Documents/com~apple~CloudDocs', true),
   ('/Library/Audio/Plug-Ins/VST3/FabFilter Pro-Q 3.vst3', true),
   ('/Users/tester/Library/Caches/com.apple.coreaudio', true),

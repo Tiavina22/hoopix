@@ -160,7 +160,10 @@ const _criticalDataPaths = [
   '*/Library/Keychains/*',
   '*/Library/Mail',
   '*/Library/Mail/*',
+  // CalendarAgent keeps the `Calendar Cache` SQLite index open; deleting it
+  // can crash Calendar.app until logout (Mole #1508).
   '*/Library/Calendars',
+  '*/Library/Calendars/*',
   '*/Library/Contacts',
   '*/Library/Contacts/*',
   // Audio plug-ins and their licence state.
