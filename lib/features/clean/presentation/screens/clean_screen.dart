@@ -7,11 +7,16 @@ import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/utils/byte_format.dart';
 import 'package:hoopix/core/widgets/metric_card.dart';
 import 'package:hoopix/features/clean/data/repositories/clean_repository_impl.dart';
+import 'package:hoopix/features/clean/data/repositories/whitelist_repository_impl.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/repositories/clean_repository.dart';
+import 'package:hoopix/features/clean/domain/repositories/whitelist_repository.dart';
 import 'package:hoopix/features/clean/domain/usecases/approve_clean_plan.dart';
+import 'package:hoopix/features/clean/domain/usecases/load_whitelist.dart';
+import 'package:hoopix/features/clean/domain/usecases/save_whitelist.dart';
 import 'package:hoopix/features/clean/domain/usecases/watch_clean_plan.dart';
 import 'package:hoopix/features/clean/presentation/state/clean_controller.dart';
+import 'package:hoopix/features/clean/presentation/widgets/whitelist_dialog.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
 /// What a clean run would remove, before it removes anything.
@@ -19,9 +24,15 @@ import 'package:hoopix/l10n/app_localizations.dart';
 /// The preview is the screen. Nothing here deletes yet — approving the plan
 /// is the next step, and it should be a deliberate one.
 class CleanScreen extends StatefulWidget {
-  const CleanScreen({super.key, this.repository, this.homePath});
+  const CleanScreen({
+    super.key,
+    this.repository,
+    this.whitelistRepository,
+    this.homePath,
+  });
 
   final CleanRepository? repository;
+  final WhitelistRepository? whitelistRepository;
   final String? homePath;
 
   @override
@@ -30,14 +41,18 @@ class CleanScreen extends StatefulWidget {
 
 class _CleanScreenState extends State<CleanScreen> {
   late final CleanController _controller;
+  late final String _home;
+  late final WhitelistRepository _whitelist;
 
   @override
   void initState() {
     super.initState();
-    final home =
+    final home = _home =
         widget.homePath ??
         Platform.environment['HOME'] ??
         Directory.systemTemp.path;
+    _whitelist =
+        widget.whitelistRepository ?? WhitelistRepositoryImpl(home: home);
     final repository = widget.repository ?? CleanRepositoryImpl(home: home);
     _controller = CleanController(
       WatchCleanPlan(repository),
@@ -85,6 +100,26 @@ class _CleanScreenState extends State<CleanScreen> {
     );
   }
 
+  /// A saved whitelist changes what the plan may include, so the preview
+  /// is worked out again rather than left showing the old answer.
+  Future<void> _editWhitelist() async {
+    final l10n = AppLocalizations.of(context)!;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => WhitelistDialog(
+        load: LoadWhitelist(_whitelist, home: _home),
+        save: SaveWhitelist(_whitelist),
+        displayPath: _whitelist.displayPath,
+      ),
+    );
+    if (saved != true || !mounted) return;
+
+    _controller.start();
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(l10n.whitelistSaved)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -99,7 +134,11 @@ class _CleanScreenState extends State<CleanScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(controller: _controller, onClean: _confirmAndClean),
+            _Header(
+              controller: _controller,
+              onClean: _confirmAndClean,
+              onEditWhitelist: _editWhitelist,
+            ),
             const SizedBox(height: HoopixSpacing.lg),
             Expanded(child: _Body(controller: _controller)),
           ],
@@ -110,10 +149,15 @@ class _CleanScreenState extends State<CleanScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.controller, required this.onClean});
+  const _Header({
+    required this.controller,
+    required this.onClean,
+    required this.onEditWhitelist,
+  });
 
   final CleanController controller;
   final VoidCallback onClean;
+  final VoidCallback onEditWhitelist;
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +194,17 @@ class _Header extends StatelessWidget {
               ),
             ],
             const Spacer(),
+            TextButton(
+              // Editing mid-removal would rescan under the approval.
+              onPressed: controller.isRemoving ? null : onEditWhitelist,
+              style: TextButton.styleFrom(
+                foregroundColor: palette.labelSecondary,
+                textStyle: HoopixType.body,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(l10n.cleanWhitelistButton),
+            ),
+            const SizedBox(width: HoopixSpacing.sm),
             FilledButton(
               onPressed: controller.canApprove ? onClean : null,
               style: FilledButton.styleFrom(

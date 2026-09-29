@@ -108,6 +108,49 @@
   "cleanKeptProtected": "Protected",
   "cleanKeptWhitelisted": "On your whitelist",
   "cleanKeptModelCache": "In use by a running app",
+  "cleanWhitelistButton": "Whitelist",
+  "whitelistTitle": "Whitelist",
+  "whitelistSubtitle": "Choose the caches Clean must leave alone. Saved to {path}; any path added to that file is protected too.",
+  "@whitelistSubtitle": {
+    "placeholders": {
+      "path": { "type": "String" }
+    }
+  },
+  "whitelistDefaultsNote": "No whitelist saved yet: the defaults checked below are in force.",
+  "whitelistAlwaysProtected": "Always protected",
+  "whitelistCustomTitle": "Your own paths",
+  "whitelistCustomEmpty": "None yet.",
+  "whitelistCustomHint": "Absolute path or pattern, e.g. ~/Library/Caches/MyApp/*",
+  "whitelistAdd": "Add",
+  "whitelistRemove": "Remove",
+  "whitelistSave": "Save",
+  "whitelistSaved": "Whitelist saved. Scanning again…",
+  "whitelistSaveFailed": "Could not save the whitelist: {error}",
+  "@whitelistSaveFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "whitelistLoadFailed": "Could not read the whitelist: {error}",
+  "@whitelistLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "whitelistRefusedTraversal": "“..” is not allowed in a path.",
+  "whitelistRefusedInvalid": "That path contains invalid characters.",
+  "whitelistRefusedNotAbsolute": "Use an absolute path, or one starting with ~.",
+  "whitelistRefusedSlashes": "That path has two slashes in a row.",
+  "whitelistRefusedSystem": "System paths are already protected.",
+  "whitelistCategorySystemCache": "System",
+  "whitelistCategoryIdeCache": "IDEs and editors",
+  "whitelistCategoryAiMlCache": "AI and automation",
+  "whitelistCategoryCompilerCache": "Build and compiler caches",
+  "whitelistCategoryPackageManager": "Package managers",
+  "whitelistCategoryBrowserCache": "Browsers",
+  "whitelistCategoryNetworkTools": "Network tools",
+  "whitelistCategoryContainerCache": "Containers and VMs",
+  "whitelistCategoryAppCache": "Apps",
 
   "analyzeOverviewBreadcrumb": "Overview",
   "analyzeRowHome": "Home",

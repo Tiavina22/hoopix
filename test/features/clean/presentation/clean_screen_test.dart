@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/repositories/clean_repository.dart';
+import 'package:hoopix/features/clean/domain/repositories/whitelist_repository.dart';
 import 'package:hoopix/features/clean/presentation/screens/clean_screen.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
@@ -12,9 +13,13 @@ class _FakeCleanRepository implements CleanRepository {
 
   final List<CleanPlan> plans;
   final List<List<String>> approved = [];
+  var watchCount = 0;
 
   @override
-  Stream<CleanPlan> watchPlan() => Stream.fromIterable(plans);
+  Stream<CleanPlan> watchPlan() {
+    watchCount++;
+    return Stream.fromIterable(plans);
+  }
 
   @override
   Future<Map<String, String>> approve(List<CleanCandidate> candidates) async {
@@ -23,7 +28,29 @@ class _FakeCleanRepository implements CleanRepository {
   }
 }
 
-Widget harness(CleanRepository repository) => MaterialApp(
+class _FakeWhitelistRepository implements WhitelistRepository {
+  _FakeWhitelistRepository(this.lines);
+
+  List<String>? lines;
+  final saves = <List<String>>[];
+
+  @override
+  String get displayPath => '~/.config/hoopix/whitelist';
+
+  @override
+  Future<List<String>?> read() async => lines;
+
+  @override
+  Future<void> save(List<String> lines) async {
+    saves.add(lines);
+    this.lines = lines;
+  }
+}
+
+Widget harness(
+  CleanRepository repository, {
+  WhitelistRepository? whitelist,
+}) => MaterialApp(
   theme: HoopixTheme.light(),
   locale: const Locale('en'),
   localizationsDelegates: const [
@@ -34,11 +61,84 @@ Widget harness(CleanRepository repository) => MaterialApp(
   ],
   supportedLocales: AppLocalizations.supportedLocales,
   home: Scaffold(
-    body: CleanScreen(repository: repository, homePath: '/Users/tester'),
+    body: CleanScreen(
+      repository: repository,
+      whitelistRepository: whitelist,
+      homePath: '/Users/tester',
+    ),
   ),
 );
 
 void main() {
+  testWidgets('the whitelist editor saves what was chosen, then scans '
+      'again', (tester) async {
+    final repository = _FakeCleanRepository([const CleanPlan(candidates: [])]);
+    final whitelist = _FakeWhitelistRepository(const []);
+    await tester.pumpWidget(harness(repository, whitelist: whitelist));
+    await tester.pumpAndSettle();
+    expect(repository.watchCount, 1);
+
+    await tester.tap(find.text('Whitelist'));
+    await tester.pumpAndSettle();
+
+    final npm = find.text('npm package cache');
+    await tester.scrollUntilVisible(npm, 200);
+    await tester.tap(
+      find.descendant(
+        of: find.ancestor(of: npm, matching: find.byType(Row)).first,
+        matching: find.byType(Checkbox),
+      ),
+    );
+    await tester.pump();
+
+    final field = find.byType(TextField);
+    await tester.scrollUntilVisible(field, 400);
+    await tester.enterText(field, 'relative/path');
+    await tester.tap(find.text('Add'));
+    await tester.pump();
+    expect(
+      find.text('Use an absolute path, or one starting with ~.'),
+      findsOneWidget,
+    );
+
+    await tester.enterText(field, '~/Work/keep/*');
+    await tester.tap(find.text('Add'));
+    await tester.pump();
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final saved = whitelist.saves.single
+        .where((line) => !line.startsWith('#') && line.isNotEmpty)
+        .toList();
+    expect(saved, ['~/.npm/_cacache/*', '~/Work/keep/*']);
+    expect(find.text('Save'), findsNothing);
+    expect(repository.watchCount, 2);
+  });
+
+  testWidgets('cancelling the whitelist editor saves nothing and does not '
+      'scan again', (tester) async {
+    final repository = _FakeCleanRepository([const CleanPlan(candidates: [])]);
+    final whitelist = _FakeWhitelistRepository(null);
+    await tester.pumpWidget(harness(repository, whitelist: whitelist));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Whitelist'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'No whitelist saved yet: the defaults checked below are in force.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(whitelist.saves, isEmpty);
+    expect(repository.watchCount, 1);
+  });
+
   testWidgets('says plainly that a preview removes nothing', (tester) async {
     await tester.pumpWidget(
       harness(

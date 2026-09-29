@@ -29,6 +29,7 @@ import 'package:hoopix/features/clean/data/datasources/system_local_datasource.d
 import 'package:hoopix/features/clean/data/datasources/tart_cache_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/utm_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/xcode_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/repositories/whitelist_repository_impl.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_plan.dart';
 import 'package:hoopix/features/clean/domain/entities/clean_whitelist.dart';
 import 'package:hoopix/features/clean/domain/entities/path_protection.dart';
@@ -43,11 +44,6 @@ const _sizeTimeout = Duration(seconds: 60);
 /// and rewrites a real cache tree, not a quick probe — bounded generously
 /// rather than on the same clock as a `du`.
 const _ownerCommandTimeout = Duration(minutes: 3);
-
-/// Where a user's own cleanup whitelist lives. Same shape and filename as
-/// Mole's, under hoopix's own directory, so the file is portable between
-/// the two.
-String whitelistPathFor(String home) => '$home/.config/hoopix/whitelist';
 
 class CleanRepositoryImpl implements CleanRepository {
   CleanRepositoryImpl({
@@ -139,7 +135,7 @@ class CleanRepositoryImpl implements CleanRepository {
            recheckGuard ??
            const ProcessGuard(ProcessRunner(timeout: Duration(seconds: 5))),
        _liveCacheGuard = liveCacheGuard ?? LiveCacheGuard(home: home),
-       _readWhitelist = readWhitelist ?? _readWhitelistFile;
+       _readWhitelist = readWhitelist ?? WhitelistRepositoryImpl.readLinesSync;
 
   final String home;
   final CleanSectionsLocalDataSource _sections;
@@ -386,18 +382,4 @@ class CleanRepositoryImpl implements CleanRepository {
         _orphanedSystemServices.stillEligible,
     InstallerFilesLocalDataSource.revalidatorKey: _installerFiles.stillEligible,
   };
-
-  /// Null when the user has no whitelist file, which is what selects the
-  /// convenience defaults rather than an empty list.
-  static List<String>? _readWhitelistFile(String home) {
-    try {
-      final file = File(whitelistPathFor(home));
-      if (!file.existsSync()) return null;
-      return file.readAsLinesSync();
-    } on Object {
-      // An unreadable whitelist must not silently mean "protect nothing".
-      // Falling back to the defaults keeps the safety rows in place.
-      return null;
-    }
-  }
 }
