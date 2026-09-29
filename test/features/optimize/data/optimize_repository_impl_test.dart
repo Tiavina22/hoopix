@@ -70,7 +70,6 @@ void main() {
       'shared_file_list_repair',
       'fix_broken_configs',
       'spotlight_orphan_rules_cleanup',
-      'launch_services_rebuild',
       'launch_agents_cleanup',
       'sqlite_vacuum',
       // system_maintenance must precede network_optimization: they share

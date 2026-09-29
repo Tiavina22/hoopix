@@ -5,7 +5,6 @@ import 'package:hoopix/features/optimize/data/datasources/disk_permissions_repai
 import 'package:hoopix/features/optimize/data/datasources/dns_flush_tracker.dart';
 import 'package:hoopix/features/optimize/data/datasources/fix_broken_configs_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/launch_agents_cleanup_task.dart';
-import 'package:hoopix/features/optimize/data/datasources/launch_services_rebuild_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/legacy_overrides_audit_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/network_optimization_task.dart';
 import 'package:hoopix/features/optimize/data/datasources/network_stack_optimize_task.dart';
@@ -65,7 +64,6 @@ class OptimizeRepositoryImpl implements OptimizeRepository {
       SharedFileListRepairTask(home: home),
       FixBrokenConfigsTask(home: home),
       SpotlightOrphanRulesCleanupTask(home: home),
-      LaunchServicesRebuildTask(),
       LaunchAgentsCleanupTask(home: home),
       SqliteVacuumTask(home: home),
       SystemMaintenanceTask(dnsFlushTracker: dnsFlushTracker),
