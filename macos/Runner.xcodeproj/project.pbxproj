@@ -34,6 +34,7 @@
 		A1B2C3D40000000000000301 /* DirectoryScanChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000302 /* DirectoryScanChannel.swift */; };
 		A1B2C3D40000000000000401 /* PrivilegedDeleteChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000402 /* PrivilegedDeleteChannel.swift */; };
 		A1B2C3D40000000000000501 /* PrivilegedCommandChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000502 /* PrivilegedCommandChannel.swift */; };
+		A1B2C3D40000000000000601 /* CpuTicksChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000602 /* CpuTicksChannel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +93,7 @@
 		A1B2C3D40000000000000302 /* DirectoryScanChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryScanChannel.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000402 /* PrivilegedDeleteChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedDeleteChannel.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000502 /* PrivilegedCommandChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedCommandChannel.swift; sourceTree = "<group>"; };
+		A1B2C3D40000000000000602 /* CpuTicksChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuTicksChannel.swift; sourceTree = "<group>"; };
 		C44EA46A0222F75C6056E343 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		C77CC5108BAB856F99ABFD81 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		D919953E48204A059E960332 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -206,6 +208,7 @@
 				A1B2C3D40000000000000302 /* DirectoryScanChannel.swift */,
 				A1B2C3D40000000000000402 /* PrivilegedDeleteChannel.swift */,
 				A1B2C3D40000000000000502 /* PrivilegedCommandChannel.swift */,
+				A1B2C3D40000000000000602 /* CpuTicksChannel.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -458,6 +461,7 @@
 				A1B2C3D40000000000000301 /* DirectoryScanChannel.swift in Sources */,
 				A1B2C3D40000000000000401 /* PrivilegedDeleteChannel.swift in Sources */,
 				A1B2C3D40000000000000501 /* PrivilegedCommandChannel.swift in Sources */,
+				A1B2C3D40000000000000601 /* CpuTicksChannel.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

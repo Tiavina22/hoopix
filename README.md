@@ -84,16 +84,19 @@ have it, and only to uninstall an app you installed through it.
 
 Each metric comes from a standard macOS tool, parsed in the data layer. Every
 call is timeout-bounded, and a probe that fails leaves its own card blank
-instead of blanking the dashboard.
+instead of blanking the dashboard. What cannot change while the app runs
+(host identity, hardware, core counts, installed memory) is read once, and
+Bluetooth devices are re-read every 30 seconds rather than every second.
 
 | Metric | Source |
 |---|---|
-| Host / uptime | `sysctl -n kern.boottime`, `sw_vers`, `hostname` |
-| CPU | `top -l 1 -n 0 -s 0`, `sysctl hw.physicalcpu hw.ncpu` |
+| Host / uptime | `sysctl -n kern.boottime`, `sw_vers`, `hostname`, `system_profiler SPHardwareDataType` |
+| CPU | per-core tick counters (`host_processor_info`) read 100 ms apart, `sysctl hw.physicalcpu hw.ncpu` |
 | Memory | `vm_stat`, `sysctl -n hw.memsize` |
 | Storage | `df -k` |
 | Battery | `pmset -g batt` |
 | Network | `netstat -ib` |
+| Bluetooth | `system_profiler SPBluetoothDataType` |
 
 ## Design
 

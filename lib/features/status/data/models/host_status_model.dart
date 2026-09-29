@@ -13,11 +13,20 @@ class HostStatusModel extends HostStatus {
   /// `{ sec = 1788154582, usec = 481281 } Mon Aug 31 08:36:22 2026`.
   /// Reading the epoch avoids parsing `uptime`'s locale-dependent free text.
   static Duration uptimeFromBoottime(String boottimeOutput, DateTime now) {
+    final bootTime = bootTimeFrom(boottimeOutput);
+    return bootTime == null ? Duration.zero : uptimeSince(bootTime, now);
+  }
+
+  /// The boot instant in `sysctl -n kern.boottime` output, or null.
+  static DateTime? bootTimeFrom(String boottimeOutput) {
     final match = RegExp(r'sec\s*=\s*(\d+)').firstMatch(boottimeOutput);
-    if (match == null) return Duration.zero;
-    final bootTime = DateTime.fromMillisecondsSinceEpoch(
+    if (match == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
       int.parse(match.group(1)!) * 1000,
     );
+  }
+
+  static Duration uptimeSince(DateTime bootTime, DateTime now) {
     final uptime = now.difference(bootTime);
     return uptime.isNegative ? Duration.zero : uptime;
   }

@@ -6,6 +6,7 @@ import 'package:hoopix/features/status/data/datasources/disk_local_datasource.da
 import 'package:hoopix/features/status/data/datasources/host_local_datasource.dart';
 import 'package:hoopix/features/status/data/datasources/memory_local_datasource.dart';
 import 'package:hoopix/features/status/data/datasources/network_local_datasource.dart';
+import 'package:hoopix/features/status/data/models/bluetooth_device_model.dart';
 import 'package:hoopix/features/status/data/models/network_status_model.dart';
 import 'package:hoopix/features/status/domain/entities/disk_status.dart';
 import 'package:hoopix/features/status/domain/entities/network_status.dart';
@@ -17,14 +18,17 @@ import 'package:hoopix/features/status/domain/repositories/status_repository.dar
 /// leaves its field null/empty rather than failing the whole snapshot, so a
 /// single flaky CLI tool can't blank the live dashboard.
 class StatusRepositoryImpl implements StatusRepository {
-  StatusRepositoryImpl({ProcessRunner processRunner = const ProcessRunner()})
-    : _cpu = CpuLocalDataSource(processRunner),
-      _memory = MemoryLocalDataSource(processRunner),
-      _disk = DiskLocalDataSource(processRunner),
-      _battery = BatteryLocalDataSource(processRunner),
-      _network = NetworkLocalDataSource(processRunner),
-      _host = HostLocalDataSource(processRunner),
-      _bluetooth = BluetoothLocalDataSource(processRunner);
+  StatusRepositoryImpl({
+    ProcessRunner processRunner = const ProcessRunner(),
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now,
+       _cpu = CpuLocalDataSource(processRunner),
+       _memory = MemoryLocalDataSource(processRunner),
+       _disk = DiskLocalDataSource(processRunner),
+       _battery = BatteryLocalDataSource(processRunner),
+       _network = NetworkLocalDataSource(processRunner),
+       _host = HostLocalDataSource(processRunner),
+       _bluetooth = BluetoothLocalDataSource(processRunner);
 
   /// Test-only seam: build with hand-picked datasources (e.g. wired to a
   /// fake [ProcessRunner]) instead of the default local ones.
@@ -36,7 +40,9 @@ class StatusRepositoryImpl implements StatusRepository {
     required NetworkLocalDataSource network,
     required HostLocalDataSource host,
     required BluetoothLocalDataSource bluetooth,
-  }) : _cpu = cpu,
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now,
+       _cpu = cpu,
        _memory = memory,
        _disk = disk,
        _battery = battery,
@@ -51,6 +57,15 @@ class StatusRepositoryImpl implements StatusRepository {
   final NetworkLocalDataSource _network;
   final HostLocalDataSource _host;
   final BluetoothLocalDataSource _bluetooth;
+  final DateTime Function() _now;
+
+  /// `system_profiler SPBluetoothDataType` is slow, and paired devices
+  /// rarely change: reuse the last answer for [_bluetoothTtl], as Mole does
+  /// (`cmd/status/metrics.go`), except that an empty answer is asked again
+  /// on the next tick.
+  static const _bluetoothTtl = Duration(seconds: 30);
+  List<BluetoothDeviceModel> _lastBluetooth = const [];
+  DateTime? _lastBluetoothAt;
 
   NetworkStatusModel? _previousNetwork;
   DateTime? _previousNetworkAt;
@@ -68,23 +83,27 @@ class StatusRepositoryImpl implements StatusRepository {
   /// Single-tick collection, exposed for tests that don't want to consume
   /// the infinite [watchStatus] stream.
   Future<SystemSnapshot> collect() async {
-    final now = DateTime.now();
+    final now = _now();
 
-    final cpuFuture = _guard(_cpu.fetch);
+    // CPU first, before the other probes spawn their processes: the usage
+    // window is only 100ms, and measuring it during hoopix's own burst of
+    // `df`, `vm_stat` and `pmset` would count that load as the machine's
+    // (Mole #1237).
+    final cpu = await _guard(_cpu.fetch);
+
     final memoryFuture = _guard(_memory.fetch);
     final diskFuture = _guard(_disk.fetch);
     final batteryFuture = _guard(_battery.fetch);
     final networkFuture = _guard(_network.fetch);
     final hostFuture = _guard(_host.fetch);
-    final bluetoothFuture = _guard(_bluetooth.fetch);
+    final bluetoothFuture = _bluetoothDevices(now);
 
-    final cpu = await cpuFuture;
     final memory = await memoryFuture;
     final disks = await diskFuture ?? const <DiskStatus>[];
     final battery = await batteryFuture;
     final network = _withRate(await networkFuture, now);
     final host = await hostFuture;
-    final bluetoothDevices = await bluetoothFuture ?? const [];
+    final bluetoothDevices = await bluetoothFuture;
 
     return SystemSnapshot(
       collectedAt: now,
@@ -123,6 +142,18 @@ class StatusRepositoryImpl implements StatusRepository {
             double.infinity,
           ),
     );
+  }
+
+  Future<List<BluetoothDeviceModel>> _bluetoothDevices(DateTime now) async {
+    final lastAt = _lastBluetoothAt;
+    if (lastAt != null &&
+        _lastBluetooth.isNotEmpty &&
+        now.difference(lastAt) < _bluetoothTtl) {
+      return _lastBluetooth;
+    }
+    _lastBluetooth = await _guard(_bluetooth.fetch) ?? const [];
+    _lastBluetoothAt = now;
+    return _lastBluetooth;
   }
 
   Future<T?> _guard<T>(Future<T> Function() fetch) async {

@@ -9,6 +9,7 @@ class MainFlutterWindow: NSWindow {
   private var scanChannel: DirectoryScanChannel?
   private var privilegedDeleteChannel: PrivilegedDeleteChannel?
   private var privilegedCommandChannel: PrivilegedCommandChannel?
+  private var cpuTicksChannel: CpuTicksChannel?
   private var aboutChannel: FlutterMethodChannel?
 
   /// The app menu's "About hoopix" item. Its action in `MainMenu.xib` targets
@@ -52,6 +53,8 @@ class MainFlutterWindow: NSWindow {
     privilegedDeleteChannel = PrivilegedDeleteChannel(
       messenger: flutterViewController.engine.binaryMessenger)
     privilegedCommandChannel = PrivilegedCommandChannel(
+      messenger: flutterViewController.engine.binaryMessenger)
+    cpuTicksChannel = CpuTicksChannel(
       messenger: flutterViewController.engine.binaryMessenger)
     aboutChannel = FlutterMethodChannel(
       name: "fit.hoopix/about",

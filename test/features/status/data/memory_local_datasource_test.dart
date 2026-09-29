@@ -28,4 +28,34 @@ void main() {
     final runner = FakeProcessRunner(const {});
     expect(MemoryLocalDataSource(runner).fetch, throwsStateError);
   });
+
+  test('reads the installed memory once, not every tick', () async {
+    final calls = <String>[];
+    final runner = _Recording(calls, {
+      'vm_stat': ProcessResult.success(
+        'Mach Virtual Memory Statistics: (page size of 16384 bytes)\n',
+      ),
+      'sysctl -n hw.memsize': ProcessResult.success('17179869184\n'),
+    });
+    final source = MemoryLocalDataSource(runner);
+
+    await source.fetch();
+    final memory = await source.fetch();
+
+    expect(memory.totalBytes, 17179869184);
+    expect(calls.where((call) => call.startsWith('sysctl')), hasLength(1));
+    expect(calls.where((call) => call == 'vm_stat'), hasLength(2));
+  });
+}
+
+class _Recording extends FakeProcessRunner {
+  _Recording(this.calls, super.responses);
+
+  final List<String> calls;
+
+  @override
+  Future<ProcessResult> run(String executable, List<String> arguments) {
+    calls.add([executable, ...arguments].join(' '));
+    return super.run(executable, arguments);
+  }
 }
