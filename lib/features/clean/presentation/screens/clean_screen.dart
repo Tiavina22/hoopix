@@ -183,13 +183,19 @@ class _Header extends StatelessWidget {
             if (plan != null && plan.eligible.isNotEmpty) ...[
               _MasterCheckbox(controller: controller),
               const SizedBox(width: HoopixSpacing.xs),
-              Text(
-                selected.isEmpty
-                    ? l10n.cleanNoneSelected
-                    : '${l10n.cleanItemCount(selected.length)}'
-                          ' · ${formatBytes(controller.selectedReclaimableBytes)}',
-                style: HoopixType.callout.copyWith(
-                  color: palette.labelTertiary,
+              // Gives way first when the window is narrow, so the header's
+              // buttons never overflow.
+              Flexible(
+                child: Text(
+                  selected.isEmpty
+                      ? l10n.cleanNoneSelected
+                      : '${l10n.cleanItemCount(selected.length)}'
+                            ' · ${formatBytes(controller.selectedReclaimableBytes)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: HoopixType.callout.copyWith(
+                    color: palette.labelTertiary,
+                  ),
                 ),
               ),
             ],

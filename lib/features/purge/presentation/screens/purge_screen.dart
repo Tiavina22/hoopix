@@ -6,13 +6,18 @@ import 'package:hoopix/core/theme/hoopix_theme.dart';
 import 'package:hoopix/core/theme/hoopix_typography.dart';
 import 'package:hoopix/core/utils/byte_format.dart';
 import 'package:hoopix/core/widgets/metric_card.dart';
+import 'package:hoopix/features/purge/data/repositories/purge_paths_repository_impl.dart';
 import 'package:hoopix/features/purge/data/repositories/purge_repository_impl.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_activity.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_plan.dart';
+import 'package:hoopix/features/purge/domain/repositories/purge_paths_repository.dart';
 import 'package:hoopix/features/purge/domain/repositories/purge_repository.dart';
 import 'package:hoopix/features/purge/domain/usecases/approve_purge_plan.dart';
+import 'package:hoopix/features/purge/domain/usecases/load_purge_roots.dart';
+import 'package:hoopix/features/purge/domain/usecases/save_purge_roots.dart';
 import 'package:hoopix/features/purge/domain/usecases/watch_purge_plan.dart';
 import 'package:hoopix/features/purge/presentation/state/purge_controller.dart';
+import 'package:hoopix/features/purge/presentation/widgets/purge_folders_dialog.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
 
 /// Rebuildable project build artifacts (`node_modules`, `target`,
@@ -23,9 +28,15 @@ import 'package:hoopix/l10n/app_localizations.dart';
 /// Trash step to offer, and the screen says so plainly rather than
 /// implying anything can be put back.
 class PurgeScreen extends StatefulWidget {
-  const PurgeScreen({super.key, this.repository, this.homePath});
+  const PurgeScreen({
+    super.key,
+    this.repository,
+    this.pathsRepository,
+    this.homePath,
+  });
 
   final PurgeRepository? repository;
+  final PurgePathsRepository? pathsRepository;
   final String? homePath;
 
   @override
@@ -34,14 +45,17 @@ class PurgeScreen extends StatefulWidget {
 
 class _PurgeScreenState extends State<PurgeScreen> {
   late final PurgeController _controller;
+  late final String _home;
+  late final PurgePathsRepository _paths;
 
   @override
   void initState() {
     super.initState();
-    final home =
+    final home = _home =
         widget.homePath ??
         Platform.environment['HOME'] ??
         Directory.systemTemp.path;
+    _paths = widget.pathsRepository ?? PurgePathsRepositoryImpl(home: home);
     final repository = widget.repository ?? PurgeRepositoryImpl(home: home);
     _controller = PurgeController(
       WatchPurgePlan(repository),
@@ -84,6 +98,27 @@ class _PurgeScreenState extends State<PurgeScreen> {
     );
   }
 
+  /// A new list of folders changes what a scan can find, so the preview is
+  /// worked out again rather than left showing the old answer.
+  Future<void> _editFolders() async {
+    final l10n = AppLocalizations.of(context)!;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => PurgeFoldersDialog(
+        load: LoadPurgeRoots(_paths, home: _home),
+        save: SavePurgeRoots(_paths),
+        displayPath: _paths.displayPath,
+        folderExists: _paths.folderExists,
+      ),
+    );
+    if (saved != true || !mounted) return;
+
+    _controller.start();
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(l10n.purgeFoldersSaved)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -98,7 +133,11 @@ class _PurgeScreenState extends State<PurgeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(controller: _controller, onPurge: _confirmAndPurge),
+            _Header(
+              controller: _controller,
+              onPurge: _confirmAndPurge,
+              onEditFolders: _editFolders,
+            ),
             const SizedBox(height: HoopixSpacing.lg),
             Expanded(child: _Body(controller: _controller)),
           ],
@@ -109,10 +148,15 @@ class _PurgeScreenState extends State<PurgeScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.controller, required this.onPurge});
+  const _Header({
+    required this.controller,
+    required this.onPurge,
+    required this.onEditFolders,
+  });
 
   final PurgeController controller;
   final VoidCallback onPurge;
+  final VoidCallback onEditFolders;
 
   @override
   Widget build(BuildContext context) {
@@ -138,17 +182,34 @@ class _Header extends StatelessWidget {
             if (plan != null && plan.candidates.isNotEmpty) ...[
               _MasterCheckbox(controller: controller),
               const SizedBox(width: HoopixSpacing.xs),
-              Text(
-                selected.isEmpty
-                    ? l10n.purgeNoneSelected
-                    : '${l10n.purgeItemCount(selected.length)}'
-                          ' · ${formatBytes(controller.selectedReclaimableBytes)}',
-                style: HoopixType.callout.copyWith(
-                  color: palette.labelTertiary,
+              // Gives way first when the window is narrow, so the header's
+              // buttons never overflow.
+              Flexible(
+                child: Text(
+                  selected.isEmpty
+                      ? l10n.purgeNoneSelected
+                      : '${l10n.purgeItemCount(selected.length)}'
+                            ' · ${formatBytes(controller.selectedReclaimableBytes)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: HoopixType.callout.copyWith(
+                    color: palette.labelTertiary,
+                  ),
                 ),
               ),
             ],
             const Spacer(),
+            TextButton(
+              // Editing mid-removal would rescan under the approval.
+              onPressed: controller.isRemoving ? null : onEditFolders,
+              style: TextButton.styleFrom(
+                foregroundColor: palette.labelSecondary,
+                textStyle: HoopixType.body,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(l10n.purgeFoldersButton),
+            ),
+            const SizedBox(width: HoopixSpacing.sm),
             FilledButton(
               onPressed: controller.canApprove ? onPurge : null,
               style: FilledButton.styleFrom(

@@ -151,6 +151,39 @@
   "whitelistCategoryNetworkTools": "Network tools",
   "whitelistCategoryContainerCache": "Containers and VMs",
   "whitelistCategoryAppCache": "Apps",
+  "purgeFoldersButton": "Folders",
+  "purgeFoldersTitle": "Folders to scan",
+  "purgeFoldersSubtitle": "Purge only looks for build artifacts inside these folders. Saved to {path}.",
+  "@purgeFoldersSubtitle": {
+    "placeholders": {
+      "path": { "type": "String" }
+    }
+  },
+  "purgeFoldersAutomatic": "Automatic: these folders were found in your home. Add or remove one to use your own list instead.",
+  "purgeFoldersCustom": "Your own list: only these folders are scanned.",
+  "purgeFoldersNone": "No folder found.",
+  "purgeFoldersNotFound": "not found",
+  "purgeFoldersUseAutomatic": "Use automatic discovery",
+  "purgeFoldersHint": "Folder, e.g. ~/Work/ClientA",
+  "purgeFoldersAdd": "Add",
+  "purgeFoldersRemove": "Remove",
+  "purgeFoldersSave": "Save",
+  "purgeFoldersSaved": "Folders saved. Scanning again…",
+  "purgeFoldersSaveFailed": "Could not save the folders: {error}",
+  "@purgeFoldersSaveFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "purgeFoldersLoadFailed": "Could not read the folders: {error}",
+  "@purgeFoldersLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "purgeFoldersRefusedNotAbsolute": "Use an absolute path, or one starting with ~.",
+  "purgeFoldersRefusedTraversal": "“..” is not allowed in a path.",
+  "purgeFoldersRefusedWholeDisk": "Scanning the whole disk is not allowed.",
 
   "analyzeOverviewBreadcrumb": "Overview",
   "analyzeRowHome": "Home",

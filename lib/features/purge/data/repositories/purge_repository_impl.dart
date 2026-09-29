@@ -4,6 +4,7 @@ import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/purge/data/datasources/purge_identity.dart';
+import 'package:hoopix/features/purge/data/repositories/purge_paths_repository_impl.dart';
 import 'package:hoopix/features/purge/domain/entities/nested_artifacts.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_activity.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_cloud_sync.dart';
@@ -11,6 +12,7 @@ import 'package:hoopix/features/purge/domain/entities/purge_discovery.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_plan.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_protection.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_safety.dart';
+import 'package:hoopix/features/purge/domain/entities/purge_search_roots.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_target_scanner.dart';
 import 'package:hoopix/features/purge/domain/repositories/purge_repository.dart';
 
@@ -28,7 +30,10 @@ class PurgeRepositoryImpl implements PurgeRepository {
     SizeProbe? sizeProbe,
     Directory Function(String path)? directory,
     OperationLog? log,
+    List<String>? Function(String home)? readPurgePaths,
   }) : _discovery = discovery ?? PurgeDiscovery(home: home),
+       _readPurgePaths =
+           readPurgePaths ?? PurgePathsRepositoryImpl.readLinesSync,
        _scanner = scanner ?? PurgeTargetScanner(),
        _activityClassifier = activityClassifier ?? PurgeActivityClassifier(),
        _identity = identity ?? PurgeIdentity(),
@@ -45,13 +50,19 @@ class PurgeRepositoryImpl implements PurgeRepository {
   final SizeProbe _sizeProbe;
   final Directory Function(String path) _directory;
   final OperationLog _log;
+  final List<String>? Function(String home) _readPurgePaths;
 
   @override
   Stream<PurgePlan> watchPlan() async* {
     // path -> the root it was found under, needed to re-run
     // isSafeProjectArtifact against the same root right before deletion.
     final foundUnderRoot = <String, String>{};
-    for (final root in _discovery.discover()) {
+    final roots = purgeScanRoots(
+      _readPurgePaths(home),
+      home: home,
+      discover: _discovery.discover,
+    );
+    for (final root in roots) {
       for (final found in _scanner.scan(root)) {
         if (foundUnderRoot.containsKey(found)) continue;
         if (!isSafeProjectArtifact(found, root)) continue;

@@ -8,6 +8,7 @@ import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/features/purge/data/datasources/purge_identity.dart';
 import 'package:hoopix/features/purge/data/repositories/purge_repository_impl.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_activity.dart';
+import 'package:hoopix/features/purge/domain/entities/purge_discovery.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_identity_snapshot.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_plan.dart';
 
@@ -52,6 +53,54 @@ void main() {
     identity: PurgeIdentity(probe: FakeProcessRunner(statResponses)),
     sizeProbe: SizeProbe(FakeProcessRunner(duResponses)),
   );
+
+  test('scans only the configured folders when purge_paths lists any, '
+      'reaching a project discovery would skip', () async {
+    // Three levels down: deeper than discovery's own probe reaches.
+    final project = await Directory(
+      '${home.path}/clients/acme/apps/web',
+    ).create(recursive: true);
+    await File('${project.path}/package.json').create();
+    final artifact = await Directory(
+      '${project.path}/node_modules',
+    ).create(recursive: true);
+    var discoveryRan = false;
+
+    final plan = await PurgeRepositoryImpl(
+      home: home.path,
+      discovery: _TrackingDiscovery(home.path, () => discoveryRan = true),
+      readPurgePaths: (_) => ['# header', '~/clients/acme/apps'],
+      identity: PurgeIdentity(
+        probe: FakeProcessRunner({
+          'stat -f %d:%i ${artifact.parent.path}': ProcessResult.success(
+            '1:100\n',
+          ),
+          'stat -f %d:%i ${artifact.path}': ProcessResult.success('1:200\n'),
+        }),
+      ),
+      sizeProbe: SizeProbe(FakeProcessRunner(const {})),
+    ).watchPlan().first;
+
+    expect(discoveryRan, isFalse);
+    expect(plan.candidates.single.path, artifact.path);
+    expect(
+      plan.candidates.single.searchRoot,
+      '${home.path}/clients/acme/apps',
+    );
+  });
+
+  test('a purge_paths file with no folders leaves discovery in charge', () async {
+    var discoveryRan = false;
+
+    await PurgeRepositoryImpl(
+      home: home.path,
+      discovery: _TrackingDiscovery(home.path, () => discoveryRan = true),
+      readPurgePaths: (_) => ['# only a header'],
+      sizeProbe: SizeProbe(FakeProcessRunner(const {})),
+    ).watchPlan().toList();
+
+    expect(discoveryRan, isTrue);
+  });
 
   test('finds an old artifact under a discovered project, sized', () async {
     final artifact = await backdatedNodeModules();
@@ -240,4 +289,16 @@ void main() {
       expect(failures[candidate.path], 'is now a symlink');
     });
   });
+}
+
+class _TrackingDiscovery extends PurgeDiscovery {
+  _TrackingDiscovery(String home, this.onDiscover) : super(home: home);
+
+  final void Function() onDiscover;
+
+  @override
+  List<String> discover() {
+    onDiscover();
+    return const [];
+  }
 }
