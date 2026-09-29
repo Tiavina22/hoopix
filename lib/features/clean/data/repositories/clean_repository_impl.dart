@@ -19,6 +19,7 @@ import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_c
 import 'package:hoopix/features/clean/data/datasources/finder_metadata_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/installer_files_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/live_cache_guard.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/orphaned_system_services_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/pnpm_store_local_datasource.dart';
@@ -80,6 +81,7 @@ class CleanRepositoryImpl implements CleanRepository {
     OperationLog? log,
     ProcessRunner? ownerCommandRunner,
     ProcessGuard? recheckGuard,
+    LiveCacheGuard? liveCacheGuard,
   }) : _trash = trash,
        _privilegedDelete = privilegedDelete,
        _system = system,
@@ -136,6 +138,7 @@ class CleanRepositoryImpl implements CleanRepository {
        _recheckGuard =
            recheckGuard ??
            const ProcessGuard(ProcessRunner(timeout: Duration(seconds: 5))),
+       _liveCacheGuard = liveCacheGuard ?? LiveCacheGuard(home: home),
        _readWhitelist = readWhitelist ?? _readWhitelistFile;
 
   final String home;
@@ -167,6 +170,7 @@ class CleanRepositoryImpl implements CleanRepository {
   final SizeProbe _sizeProbe;
   final ProcessRunner _ownerCommandRunner;
   final ProcessGuard _recheckGuard;
+  final LiveCacheGuard _liveCacheGuard;
   final List<String>? Function(String home) _readWhitelist;
 
   @override
@@ -274,6 +278,16 @@ class CleanRepositoryImpl implements CleanRepository {
         byPrivilegedDelete.add(candidate);
       }
     }
+
+    // Last, and batched: a reverse-DNS app cache must not leave while its
+    // owner runs or a file in it is open. One fresh process snapshot for
+    // the whole batch, taken after every slower check above, as close to
+    // the move as a batched Trash call allows.
+    final liveCaches = await _liveCacheGuard.refusals([
+      for (final candidate in byTrash) candidate.path,
+    ]);
+    failures.addAll(liveCaches);
+    byTrash.removeWhere((candidate) => liveCaches.containsKey(candidate.path));
 
     failures.addAll({
       ...await _trash.moveToTrash([

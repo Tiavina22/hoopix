@@ -48,7 +48,8 @@ You only do this once.
 
 Anything that deletes asks you first, is checked again at the moment it runs,
 and is written to `~/Library/Logs/hoopix/operations.log`. Protected system
-paths are refused. The rules are ported from
+paths are refused. An app's cache is kept while the app is running or has a
+file in it open. The rules are ported from
 [Mole](https://github.com/tw93/Mole).
 
 ## Two systems

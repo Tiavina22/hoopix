@@ -10,6 +10,7 @@ import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_lo
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/live_cache_guard.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/macos_installer_probe.dart';
 import 'package:hoopix/features/clean/data/datasources/orphaned_system_services_local_datasource.dart';
@@ -153,6 +154,50 @@ void main() {
     expect(failures, contains(candidate.path));
     final entries = readLog();
     expect(entries.single['outcome'], 'refused');
+  });
+
+  test('keeps an app cache whose owner is running out of the Trash batch, '
+      'and still moves the rest', () async {
+    final trashCalls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(trashChannel, (call) async {
+      trashCalls.add(call);
+      return <Object?, Object?>{};
+    });
+
+    final repository = CleanRepositoryImpl(
+      home: home.path,
+      liveCacheGuard: LiveCacheGuard(
+        home: home.path,
+        processList: FakeProcessRunner({
+          'ps -axo pid,ppid,comm,args': ProcessResult.success(
+            '  PID  PPID COMM             ARGS\n'
+            '  601     1 /Applications/Exa /Applications/Example.app/'
+            'Contents/MacOS/Example com.example.App\n',
+          ),
+        }),
+        selfPid: 99999,
+      ),
+    );
+    final liveCache = CleanCandidate(
+      path: '${home.path}/Library/Caches/com.example.App',
+      section: 'User essentials',
+      sizeBytes: 5,
+    );
+    final plainCandidate = CleanCandidate(
+      path: '${home.path}/Library/Caches/plain',
+      section: 'User essentials',
+      sizeBytes: 5,
+    );
+
+    final failures = await repository.approve([liveCache, plainCandidate]);
+
+    expect(failures, {liveCache.path: 'skipped: com.example.App is running'});
+    expect(trashCalls.single.arguments, {
+      'paths': [plainCandidate.path],
+    });
+    final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
+    expect(outcomes[liveCache.path], 'refused');
+    expect(outcomes[plainCandidate.path], 'trashed');
   });
 
   test('refuses a Trash candidate whose recheck guard cannot confirm the '

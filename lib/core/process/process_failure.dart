@@ -12,6 +12,7 @@ class ProcessFailure {
     this.kind,
     this.reason, {
     this.exitCode,
+    this.stderr,
   });
 
   factory ProcessFailure.notFound(String executable, String detail) =>
@@ -37,6 +38,7 @@ class ProcessFailure {
     ProcessFailureKind.nonZeroExit,
     'exited $exitCode: ${stderr.trim()}',
     exitCode: exitCode,
+    stderr: stderr,
   );
 
   final String executable;
@@ -47,6 +49,12 @@ class ProcessFailure {
   /// code, for a caller that must branch on the exact value (`pgrep`'s 1
   /// means "confirmed no match", not an error) rather than parse [reason].
   final int? exitCode;
+
+  /// Only set for [ProcessFailureKind.nonZeroExit] — the process's raw
+  /// stderr, for a caller whose verdict depends on whether the tool said
+  /// anything at all (`lsof`'s exit 1 is "nothing open" only when it is
+  /// silent; with diagnostics it is an incomplete answer).
+  final String? stderr;
 
   @override
   String toString() => '$executable $reason';
