@@ -196,6 +196,18 @@ class _TaskRow extends StatelessWidget {
                     color: palette.labelSecondary,
                   ),
                 ),
+                // A report-only task (a broken LaunchAgent, say) leaves the
+                // thing it found in place, so what it found and where has
+                // to be readable here, not just in the badge's one word.
+                if (result?.detail case final detail?) ...[
+                  const SizedBox(height: HoopixSpacing.xs),
+                  SelectableText(
+                    detail,
+                    style: HoopixType.callout.copyWith(
+                      color: palette.labelSecondary,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

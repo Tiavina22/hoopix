@@ -5,18 +5,22 @@ import 'package:hoopix/features/optimize/data/datasources/optimize_task_runner.d
 import 'package:hoopix/features/optimize/domain/entities/optimize_outcome.dart';
 import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 
-/// Ports `opt_launch_agents_cleanup` (`lib/optimize/tasks.sh`): a user
-/// LaunchAgent whose own binary is genuinely gone will never start
-/// correctly again, so `launchctl` stops retrying it and its plist is
-/// removed. Deliberately narrow about what counts as broken: a bare
-/// command name (`node`, `python3`) resolves through `$PATH` at launch
-/// time, not at scan time, and a path under `/Volumes/<disk>` that is not
-/// currently mounted just means the drive is unplugged right now — neither
-/// is treated as broken, matching `launch_agent_volume_mounted`.
+/// Ports `opt_launch_agents_cleanup` (`lib/optimize/tasks.sh`, Mole #1617):
+/// reports each user LaunchAgent whose absolute program is missing and
+/// leaves it alone. A missing executable does not prove the service is
+/// unwanted — it may just have been moved — and the plist is the
+/// configuration the user would otherwise have to rebuild by hand once the
+/// program is back. No `launchctl unload` either, since that acts on the
+/// label and can stop a live job loaded from another file.
 ///
-/// User-domain agents unload and remove without any `sudo` — the same
-/// reason [LaunchServicesRebuildTask]'s own rescan needs none for the
-/// domains it can actually reach.
+/// Deliberately narrow about what counts as broken: a bare command name
+/// (`node`, `python3`) resolves through `$PATH` at launch time, not at scan
+/// time, and a path under `/Volumes/<disk>` that is not currently mounted
+/// just means the drive is unplugged right now — neither is reported,
+/// matching `launch_agent_volume_mounted`.
+///
+/// The action id stays `launch_agents_cleanup`, as in Mole, so the task
+/// keeps its identity across the change.
 class LaunchAgentsCleanupTask implements OptimizeTaskRunner {
   LaunchAgentsCleanupTask({
     required this.home,
@@ -33,7 +37,7 @@ class LaunchAgentsCleanupTask implements OptimizeTaskRunner {
   OptimizeTask get task => const OptimizeTask(
     action: 'launch_agents_cleanup',
     name: 'Launch Agents Cleanup',
-    description: 'Remove broken LaunchAgents whose binaries no longer exist',
+    description: 'Report LaunchAgents whose binaries no longer exist',
   );
 
   @override
@@ -51,47 +55,56 @@ class LaunchAgentsCleanupTask implements OptimizeTaskRunner {
     for (final entity in entries) {
       if (entity is! File) continue;
       if (!entity.path.toLowerCase().endsWith('.plist')) continue;
-      if (await _isBroken(entity.path)) broken.add(entity.path);
+      final missing = await _missingProgram(entity.path);
+      if (missing == null) continue;
+      final label = await _plistString(entity.path, 'Label');
+      final name = (label == null || label.isEmpty)
+          ? _basenameWithoutPlist(entity.path)
+          : label;
+      broken.add('$name: program missing at ${_tildePath(missing)}');
     }
 
     if (broken.isEmpty) {
       return OptimizeTaskResult(task: task, outcome: OptimizeOutcome.unchanged);
     }
 
-    var removed = 0;
-    var failed = 0;
-    for (final plist in broken) {
-      // Best-effort: an agent that already isn't loaded, or an ordinary
-      // unload failure, must not stop the plist itself from being removed.
-      await _probe.run('launchctl', ['unload', plist]);
-      try {
-        await File(plist).delete();
-        removed++;
-      } on FileSystemException {
-        failed++;
-      }
-    }
-
+    broken.sort();
     return OptimizeTaskResult(
       task: task,
-      outcome: optimizeOutcomeFromCounts(applied: removed, failed: failed),
+      outcome: OptimizeOutcome.attention,
+      detail:
+          '${broken.join('\n')}\n'
+          'Left in ~/Library/LaunchAgents.',
     );
   }
 
-  Future<bool> _isBroken(String plistPath) async {
+  /// The agent's absolute program path when it is genuinely missing, or
+  /// null when the agent is not broken by this task's narrow definition.
+  Future<String?> _missingProgram(String plistPath) async {
     var binary = await _plistString(plistPath, 'ProgramArguments:0');
     if (binary == null || binary.isEmpty) {
       binary = await _plistString(plistPath, 'Program');
     }
     if (binary == null || binary.isEmpty || !binary.startsWith('/')) {
-      return false;
+      return null;
     }
     if (FileSystemEntity.typeSync(binary, followLinks: false) !=
         FileSystemEntityType.notFound) {
-      return false;
+      return null;
     }
-    return _volumeMounted(binary);
+    return _volumeMounted(binary) ? binary : null;
   }
+
+  String _basenameWithoutPlist(String path) {
+    final name = path.split('/').last;
+    return name.toLowerCase().endsWith('.plist')
+        ? name.substring(0, name.length - '.plist'.length)
+        : name;
+  }
+
+  String _tildePath(String path) => path == home || path.startsWith('$home/')
+      ? '~${path.substring(home.length)}'
+      : path;
 
   Future<String?> _plistString(String plistPath, String key) async {
     final result = await _probe.run('/usr/libexec/PlistBuddy', [

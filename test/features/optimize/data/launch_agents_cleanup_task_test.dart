@@ -98,41 +98,66 @@ void main() {
     },
   );
 
-  test('removes an agent whose absolute binary is genuinely missing, falling '
-      'back to Program when ProgramArguments:0 is empty', () async {
+  test('reports an agent whose absolute binary is genuinely missing, falling '
+      'back to Program when ProgramArguments:0 is empty, and leaves it '
+      'alone', () async {
     final file = await agent('com.example.broken');
+    final probe = _RecordingRunner({
+      '/usr/libexec/PlistBuddy -c Print :ProgramArguments:0 ${file.path}':
+          _missing(),
+      '/usr/libexec/PlistBuddy -c Print :Program ${file.path}': _programArgs(
+        '${home.path}/gone/tool',
+      ),
+      '/usr/libexec/PlistBuddy -c Print :Label ${file.path}': _programArgs(
+        'com.example.broken-label',
+      ),
+    });
+
+    final result = await LaunchAgentsCleanupTask(
+      home: home.path,
+      probe: probe,
+    ).run();
+
+    // A moved program does not prove the service is unwanted (Mole #1617):
+    // the plist stays, and launchd is never asked to unload the label.
+    expect(result.outcome, OptimizeOutcome.attention);
+    expect(file.existsSync(), isTrue);
+    expect(probe.calls.where((c) => c.startsWith('launchctl')), isEmpty);
+    expect(
+      result.detail,
+      contains('com.example.broken-label: program missing at ~/gone/tool'),
+    );
+    expect(result.detail, contains('Left in ~/Library/LaunchAgents.'));
+  });
+
+  test('names the agent by its file when the plist has no Label', () async {
+    final file = await agent('com.example.unlabeled');
 
     final result = await LaunchAgentsCleanupTask(
       home: home.path,
       probe: FakeProcessRunner({
         '/usr/libexec/PlistBuddy -c Print :ProgramArguments:0 ${file.path}':
-            _missing(),
-        '/usr/libexec/PlistBuddy -c Print :Program ${file.path}': _programArgs(
-          '${home.path}/gone/tool',
-        ),
-        'launchctl unload ${file.path}': ProcessResult.success(''),
+            _programArgs('/opt/gone/tool'),
       }),
     ).run();
 
-    expect(result.outcome, OptimizeOutcome.applied);
-    expect(file.existsSync(), isFalse);
+    expect(result.outcome, OptimizeOutcome.attention);
+    expect(file.existsSync(), isTrue);
+    expect(
+      result.detail,
+      contains('com.example.unlabeled: program missing at /opt/gone/tool'),
+    );
   });
+}
 
-  test('removes the plist even when launchctl unload itself fails', () async {
-    final file = await agent('com.example.stubborn');
+class _RecordingRunner extends FakeProcessRunner {
+  _RecordingRunner(super.responses);
 
-    final result = await LaunchAgentsCleanupTask(
-      home: home.path,
-      probe: FakeProcessRunner({
-        '/usr/libexec/PlistBuddy -c Print :ProgramArguments:0 ${file.path}':
-            _programArgs('${home.path}/gone/tool'),
-        'launchctl unload ${file.path}': ProcessResult.failure(
-          ProcessFailure.nonZeroExit('launchctl', 1, 'not loaded'),
-        ),
-      }),
-    ).run();
+  final calls = <String>[];
 
-    expect(result.outcome, OptimizeOutcome.applied);
-    expect(file.existsSync(), isFalse);
-  });
+  @override
+  Future<ProcessResult> run(String executable, List<String> arguments) {
+    calls.add([executable, ...arguments].join(' '));
+    return super.run(executable, arguments);
+  }
 }
