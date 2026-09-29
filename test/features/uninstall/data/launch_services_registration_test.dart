@@ -105,24 +105,17 @@ void main() {
   });
 
   group('refresh', () {
-    test('rebuilds every LaunchServices domain', () async {
+    test('only garbage-collects, never re-registers every domain', () async {
+      // A domain-wide `-r -f` makes a running Network Extension VPN read as
+      // reinstalled and drops its tunnel (Mole's
+      // refresh_launch_services_after_uninstall).
       final runner = _RecordingRunner();
       final registration = registrationWith(refreshRunner: runner);
 
       await registration.refresh();
 
       expect(runner.calls, [
-        [
-          _lsregisterPath,
-          '-r',
-          '-f',
-          '-domain',
-          'local',
-          '-domain',
-          'user',
-          '-domain',
-          'system',
-        ],
+        [_lsregisterPath, '-gc'],
       ]);
     });
 

@@ -15,7 +15,7 @@ const _lsregisterCandidates = [
 /// Ports `unregister_app_bundle` and `refresh_launch_services_after_uninstall`
 /// (`lib/uninstall/batch.sh`): clears an app's stale entry from
 /// LaunchServices' own database so Spotlight and Finder stop offering it,
-/// then rebuilds that database once the whole batch is done.
+/// then garbage-collects that database once the whole batch is done.
 ///
 /// [unregisterApp] runs per app, before its bundle moves, using the same
 /// timeout-aborts-the-batch contract as [LaunchServiceTeardown.stop]: an
@@ -23,13 +23,14 @@ const _lsregisterCandidates = [
 /// stale-but-harmless entry), only a timeout is worth stopping for. [refresh]
 /// is whole-batch, best-effort, and never propagates a timeout — callers are
 /// expected to fire it without awaiting, matching Mole's own disowned
-/// background job, since a slow rebuild must never hold up the removal the
+/// background job, since a slow refresh must never hold up the removal the
 /// user is actually waiting on.
 ///
-/// Not ported: Mole's fallback ladder that retries `-r` with fewer domains
-/// when the full rebuild itself times out. hoopix's [ProcessRunner] already
-/// bounds the single attempt, and losing a rebuild entirely on a slow
-/// machine is an acceptable cost for work nothing else depends on.
+/// [refresh] is deliberately `-gc` only, never a domain-wide `-r -f`
+/// rebuild: re-registering every app and extension makes a running Network
+/// Extension VPN (Shadowrocket, Karing) read as reinstalled, so its tunnel
+/// drops, and Siri re-indexes every app for minutes. The targeted `-u` in
+/// [unregisterApp] already handles the bundle that was actually removed.
 class LaunchServicesRegistration {
   LaunchServicesRegistration({
     ProcessRunner? runner,
@@ -37,7 +38,7 @@ class LaunchServicesRegistration {
     FileSystemEntityType Function(String path)? typeOf,
   }) : _runner = runner ?? const ProcessRunner(timeout: Duration(seconds: 5)),
        _refreshRunner =
-           refreshRunner ?? const ProcessRunner(timeout: Duration(seconds: 15)),
+           refreshRunner ?? const ProcessRunner(timeout: Duration(seconds: 10)),
        _typeOf =
            typeOf ??
            ((path) => FileSystemEntity.typeSync(path, followLinks: false));
@@ -76,15 +77,6 @@ class LaunchServicesRegistration {
   Future<void> refresh() async {
     final lsregister = _lsregister();
     if (lsregister == null) return;
-    await _refreshRunner.run(lsregister, [
-      '-r',
-      '-f',
-      '-domain',
-      'local',
-      '-domain',
-      'user',
-      '-domain',
-      'system',
-    ]);
+    await _refreshRunner.run(lsregister, ['-gc']);
   }
 }

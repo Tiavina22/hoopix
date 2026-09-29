@@ -693,7 +693,7 @@ void main() {
         expect(events, [
           '$_lsregisterPath -u ${app.path}',
           'trash ${[app.path]}',
-          '$_lsregisterPath -r -f -domain local -domain user -domain system',
+          '$_lsregisterPath -gc',
         ]);
       });
 
@@ -1144,7 +1144,7 @@ void main() {
 
     group('dock', () {
       test('hands a removed app to the Dock cleanup with its bundle id, before '
-          'the LaunchServices rebuild', () async {
+          'the LaunchServices refresh', () async {
         final app = await makeApp('MyApp');
         final events = <String>[];
         final dock = _RecordingDock(events);
@@ -1175,7 +1175,7 @@ void main() {
         expect(dock.targets.single.appPath, app.path);
         expect(dock.targets.single.bundleId, 'com.example.MyApp');
         expect(events.first, 'dock');
-        expect(events.last, startsWith('$_lsregisterPath -r'));
+        expect(events.last, '$_lsregisterPath -gc');
       });
 
       test('a live sibling keeps its tile: only the path can match', () async {
