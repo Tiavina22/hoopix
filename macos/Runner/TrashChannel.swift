@@ -134,9 +134,27 @@ final class TrashChannel {
 
   /// The user's own home root, plus the container/VM state that an app is
   /// still running out of.
+  ///
+  /// Stricter than Mole's analyzer on purpose, for two kinds of user state
+  /// whose loss reaches past this Mac: the login keychain, which macOS
+  /// keeps open and whose move breaks sign-ins everywhere it is used, and
+  /// the iCloud Drive roots themselves, whose move deletes iCloud Drive on
+  /// every device signed in to the account. A single file inside iCloud
+  /// Drive stays the user's to remove.
   private static func isProtectedHomeState(_ path: String) -> Bool {
     for home in homeRoots() {
       if path == home || isSameFile(path, home) { return true }
+
+      let keychains = home + "/Library/Keychains"
+      if path == keychains || path.hasPrefix(keychains + "/") || isWithin(path, keychains) {
+        return true
+      }
+
+      let mobileDocuments = home + "/Library/Mobile Documents"
+      for root in [mobileDocuments, mobileDocuments + "/com~apple~CloudDocs"]
+      where path == root || isSameFile(path, root) {
+        return true
+      }
 
       let dockerDesktop = home + "/Library/Containers/com.docker.docker"
       if path == dockerDesktop || path.hasPrefix(dockerDesktop + "/")
