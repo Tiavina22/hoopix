@@ -34,6 +34,9 @@ class _FakeUninstallInventoryRepository
     approvedCall = approved;
     return UninstallResult(failures: approveResult ?? const {});
   }
+
+  @override
+  Future<List<String>> runningApps(List<InstalledApp> apps) async => const [];
 }
 
 class _FailingUninstallInventoryRepository
@@ -45,6 +48,9 @@ class _FailingUninstallInventoryRepository
   @override
   Future<UninstallResult> approve(List<InstalledApp> approved) async =>
       const UninstallResult();
+
+  @override
+  Future<List<String>> runningApps(List<InstalledApp> apps) async => const [];
 }
 
 UninstallController _controllerFor(UninstallInventoryRepository repo) =>

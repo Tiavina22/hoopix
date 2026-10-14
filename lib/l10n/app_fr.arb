@@ -211,6 +211,8 @@
   "uninstallLeftBehindTitle": "Encore actif après la suppression",
   "uninstallBackgroundItemsWarning": "Un élément d’arrière-plan tourne encore pour {apps}. Désactivez-le dans Réglages Système > Général > Ouverture et extensions.",
   "uninstallSystemExtensionsWarning": "Des extensions système peuvent rester pour {apps}. Retirez-les dans Réglages Système > Général > Ouverture et extensions.",
+  "uninstallConfirmRunning": "Encore ouverte : {apps}. Elle sera d’abord invitée à quitter, puis fermée si elle ne le fait pas ; le travail non enregistré peut être perdu.",
+  "uninstallStillRunningWarning": "{apps} est restée ouverte malgré la demande de fermeture. Ses fichiers sont supprimés, mais l’app ouverte garde sa copie en mémoire jusqu’à ce que vous la quittiez.",
   "uninstallLeftBehindDismiss": "OK",
 
   "bluetoothCardTitle": "Bluetooth",

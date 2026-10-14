@@ -9,6 +9,7 @@ import 'package:hoopix/features/uninstall/data/datasources/dock_cleanup.dart';
 import 'package:hoopix/features/uninstall/data/datasources/finder_trash.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_service_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/launch_services_registration.dart';
+import 'package:hoopix/features/uninstall/data/datasources/app_termination.dart';
 import 'package:hoopix/features/uninstall/data/datasources/live_sibling_scanner.dart';
 import 'package:hoopix/features/uninstall/data/datasources/login_item_teardown.dart';
 import 'package:hoopix/features/uninstall/data/datasources/removal_warnings.dart';
@@ -37,9 +38,11 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     DockCleanup? dockCleanup,
     RemovalWarnings? removalWarnings,
     FinderTrash? finderTrash,
+    AppTermination? appTermination,
     Trash trash = const Trash(),
     OperationLog? log,
-  }) : _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
+  }) : _appTermination = appTermination ?? AppTermination(),
+       _appDiscovery = appDiscovery ?? UninstallAppDiscovery(home: home),
        _leftoverDiscovery = leftoverDiscovery ?? UninstallLeftoverDiscovery(),
        _sizeProbe =
            sizeProbe ?? const SizeProbe(ProcessRunner(timeout: _sizeTimeout)),
@@ -68,6 +71,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
   final DockCleanup _dockCleanup;
   final RemovalWarnings _removalWarnings;
   final FinderTrash _finderTrash;
+  final AppTermination _appTermination;
   final Trash _trash;
   final OperationLog _log;
 
@@ -129,6 +133,7 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
     final helperIdsByApp = <String, List<String>>{};
     final brewed = <String>{};
     final effectiveBundleIds = <String, String>{};
+    final stillRunning = <String>[];
     String? abortReason;
 
     for (final app in approved) {
@@ -257,6 +262,19 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
         helperIdsByApp[app.path] = await _loginItemTeardown.discoverHelperIds(
           app.path,
         );
+      }
+
+      // Same place as Mole's `force_kill_app`: after the login item, just
+      // before the bundle moves. Skipped under the sibling guard, as in
+      // Mole: the executable name and bundle id can belong to the
+      // surviving install too, and signalling by them could stop it
+      // instead. A process that survives does not stop the uninstall.
+      if (bootoutHelpers &&
+          !await _appTermination.quit(
+            app.path,
+            displayName: app.displayName,
+          )) {
+        stillRunning.add(app.displayName);
       }
 
       sizeByPath[app.path] = app.sizeBytes;
@@ -430,8 +448,23 @@ class UninstallInventoryRepositoryImpl implements UninstallInventoryRepository {
       failures: failures,
       backgroundItemApps: backgroundItemApps,
       systemExtensionApps: systemExtensionApps,
+      stillRunningApps: [
+        for (final app in removedApps)
+          if (stillRunning.contains(app.displayName)) app.displayName,
+      ],
     );
   }
+
+  @override
+  Future<List<String>> runningApps(List<InstalledApp> apps) async => [
+    for (final app in apps)
+      if (await _appTermination.runningProcess(
+            app.path,
+            displayName: app.displayName,
+          ) !=
+          null)
+        app.displayName,
+  ];
 
   Future<void> _afterRemoval(List<DockTarget> dockTargets) async {
     await _dockCleanup.remove(dockTargets);

@@ -12,6 +12,7 @@ import 'package:hoopix/features/uninstall/domain/entities/sibling_guard.dart';
 import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 import 'package:hoopix/features/uninstall/domain/repositories/uninstall_inventory_repository.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/approve_uninstall.dart';
+import 'package:hoopix/features/uninstall/domain/usecases/find_running_apps.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/watch_uninstall_inventory.dart';
 import 'package:hoopix/features/uninstall/presentation/state/uninstall_controller.dart';
 import 'package:hoopix/l10n/app_localizations.dart';
@@ -48,6 +49,7 @@ class _UninstallScreenState extends State<UninstallScreen> {
     _controller = UninstallController(
       WatchUninstallInventory(repository),
       ApproveUninstall(repository),
+      findRunningApps: FindRunningApps(repository),
     )..start();
   }
 
@@ -64,12 +66,18 @@ class _UninstallScreenState extends State<UninstallScreen> {
     final selected = _controller.selectedApps;
     if (selected.isEmpty) return;
 
+    // Asked before confirming, as Mole tags a running app in its prompt:
+    // quitting it can lose unsaved work, which the user must know first.
+    final running = await _controller.runningSelectedApps();
+    if (!mounted) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => _UninstallConfirmationDialog(
         count: selected.length,
         brewCount: selected.where((app) => app.caskName != null).length,
         sizeBytes: _controller.selectedReclaimableBytes,
+        runningApps: running,
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -428,6 +436,17 @@ class _LeftBehindDialog extends StatelessWidget {
               ),
               style: style,
             ),
+          if (result.stillRunningApps.isNotEmpty) ...[
+            if (result.backgroundItemApps.isNotEmpty ||
+                result.systemExtensionApps.isNotEmpty)
+              const SizedBox(height: HoopixSpacing.md),
+            Text(
+              l10n.uninstallStillRunningWarning(
+                result.stillRunningApps.join(', '),
+              ),
+              style: style,
+            ),
+          ],
         ],
       ),
       actions: [
@@ -467,11 +486,13 @@ class _UninstallConfirmationDialog extends StatelessWidget {
     required this.count,
     required this.brewCount,
     required this.sizeBytes,
+    required this.runningApps,
   });
 
   final int count;
   final int brewCount;
   final int sizeBytes;
+  final List<String> runningApps;
 
   @override
   Widget build(BuildContext context) {
@@ -497,6 +518,13 @@ class _UninstallConfirmationDialog extends StatelessWidget {
             Text(
               l10n.uninstallConfirmBrew(brewCount),
               style: HoopixType.body.copyWith(color: palette.danger),
+            ),
+          ],
+          if (runningApps.isNotEmpty) ...[
+            const SizedBox(height: HoopixSpacing.md),
+            Text(
+              l10n.uninstallConfirmRunning(runningApps.join(', ')),
+              style: HoopixType.body.copyWith(color: palette.warning),
             ),
           ],
         ],

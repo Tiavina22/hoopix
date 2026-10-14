@@ -26,4 +26,9 @@ abstract class UninstallInventoryRepository {
   /// why, and names the removed apps macOS still keeps a background job or
   /// system extension for.
   Future<UninstallResult> approve(List<InstalledApp> approved);
+
+  /// Display names of those of [apps] that are running right now, so the
+  /// confirmation can say they will be quit — and that unsaved work in
+  /// them may be lost — before the user agrees.
+  Future<List<String>> runningApps(List<InstalledApp> apps);
 }

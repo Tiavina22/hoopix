@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_runner.dart';
+import 'package:hoopix/features/uninstall/data/datasources/app_termination.dart';
 import 'package:hoopix/features/uninstall/data/datasources/brew_cask.dart';
 import 'package:hoopix/features/uninstall/data/datasources/dock_cleanup.dart';
 import 'package:hoopix/features/uninstall/data/datasources/finder_trash.dart';
@@ -117,6 +118,7 @@ void main() {
     DockCleanup? dockCleanup,
     RemovalWarnings? removalWarnings,
     FinderTrash? finderTrash,
+    AppTermination? appTermination,
   }) {
     final probe = FakeProcessRunner(responses);
     return UninstallInventoryRepositoryImpl(
@@ -173,6 +175,16 @@ void main() {
       removalWarnings:
           removalWarnings ??
           RemovalWarnings(runner: probe, listNames: (_) => const []),
+      // Never this machine's own processes: the fake answers "not found"
+      // to pgrep, so no app reads as running and nothing is ever quit or
+      // signalled.
+      appTermination:
+          appTermination ??
+          AppTermination(
+            runner: probe,
+            scriptRunner: probe,
+            sleep: (_) async {},
+          ),
       // Never the real Finder: the fake cannot run osascript, and every
       // fixture app lives outside /Applications anyway.
       finderTrash: finderTrash ?? FinderTrash(runner: probe),
@@ -1142,6 +1154,95 @@ void main() {
       );
     });
 
+    group('running app', () {
+      test('quits the app before its bundle moves, and reports one that '
+          'kept running without failing the removal', () async {
+        final app = await makeApp('MyApp');
+        final events = <String>[];
+        final termination = _RecordingTermination(events, stops: false);
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          appTermination: termination,
+        );
+        messenger.setMockMethodCallHandler(trashChannel, (call) async {
+          events.add('trash');
+          return <Object?, Object?>{};
+        });
+
+        final result = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(events.take(2), ['quit ${app.path}', 'trash']);
+        expect(result.failures, isEmpty);
+        expect(result.stillRunningApps, ['MyApp']);
+      });
+
+      test('an app that quits is not reported', () async {
+        final app = await makeApp('MyApp');
+        final repository = repositoryWith(
+          responses: myAppResponses(app.path),
+          appTermination: _RecordingTermination([], stops: true),
+        );
+        messenger.setMockMethodCallHandler(
+          trashChannel,
+          (call) async => <Object?, Object?>{},
+        );
+
+        final result = await repository.approve([
+          InstalledApp(
+            path: app.path,
+            bundleId: 'com.example.MyApp',
+            displayName: 'MyApp',
+          ),
+        ]);
+
+        expect(result.stillRunningApps, isEmpty);
+      });
+
+      test(
+        'never quits an app whose identifiers a live sibling shares',
+        () async {
+          final app = await makeApp('MyApp');
+          final sibling = await makeApp('MyApp-beta');
+          final siblingPlist = '${sibling.path}/Contents/Info.plist';
+          final events = <String>[];
+          final repository = repositoryWith(
+            responses: {
+              ...myAppResponses(app.path),
+              'plutil -extract CFBundleIdentifier raw $siblingPlist':
+                  ProcessResult.success('com.example.MyApp\n'),
+              'plutil -extract LSBackgroundOnly raw $siblingPlist':
+                  ProcessResult.success('0\n'),
+              'plutil -extract CFBundleDisplayName raw $siblingPlist':
+                  ProcessResult.success('MyApp Beta\n'),
+              'plutil -extract CFBundleName raw $siblingPlist':
+                  ProcessResult.success('MyApp Beta\n'),
+            },
+            appTermination: _RecordingTermination(events, stops: true),
+          );
+          messenger.setMockMethodCallHandler(
+            trashChannel,
+            (call) async => <Object?, Object?>{},
+          );
+
+          await repository.approve([
+            InstalledApp(
+              path: app.path,
+              bundleId: 'com.example.MyApp',
+              displayName: 'MyApp',
+            ),
+          ]);
+
+          expect(events, isEmpty);
+        },
+      );
+    });
+
     group('dock', () {
       test('hands a removed app to the Dock cleanup with its bundle id, before '
           'the LaunchServices refresh', () async {
@@ -1508,5 +1609,19 @@ class _RecordingFinder extends FinderTrash {
   Future<bool> moveApplication(String appPath) async {
     moved.add(appPath);
     return removes;
+  }
+}
+
+/// Records each quit and answers whether the app stopped.
+class _RecordingTermination extends AppTermination {
+  _RecordingTermination(this.events, {required this.stops});
+
+  final List<String> events;
+  final bool stops;
+
+  @override
+  Future<bool> quit(String appPath, {required String displayName}) async {
+    events.add('quit $appPath');
+    return stops;
   }
 }

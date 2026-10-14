@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hoopix/features/uninstall/domain/entities/installed_app.dart';
 import 'package:hoopix/features/uninstall/domain/entities/uninstall_result.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/approve_uninstall.dart';
+import 'package:hoopix/features/uninstall/domain/usecases/find_running_apps.dart';
 import 'package:hoopix/features/uninstall/domain/usecases/watch_uninstall_inventory.dart';
 
 /// Drives the Uninstall screen: an inventory to review, and the selection
@@ -11,10 +12,20 @@ import 'package:hoopix/features/uninstall/domain/usecases/watch_uninstall_invent
 /// [WatchUninstallInventory]/[ApproveUninstall] and Clean's own controller
 /// already share.
 class UninstallController extends ChangeNotifier {
-  UninstallController(this._watchUninstallInventory, this._approveUninstall);
+  UninstallController(
+    this._watchUninstallInventory,
+    this._approveUninstall, {
+    FindRunningApps? findRunningApps,
+  }) : _findRunningApps = findRunningApps;
 
   final WatchUninstallInventory _watchUninstallInventory;
   final ApproveUninstall _approveUninstall;
+  final FindRunningApps? _findRunningApps;
+
+  /// Display names of the selected apps that are running right now, which
+  /// the removal will quit first. Empty when nothing can tell.
+  Future<List<String>> runningSelectedApps() async =>
+      await _findRunningApps?.call(selectedApps) ?? const [];
 
   StreamSubscription<List<InstalledApp>>? _subscription;
 

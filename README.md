@@ -40,7 +40,7 @@ You only do this once.
 |---|---|---|
 | **Status** | Live CPU, memory, storage, battery, and network. Read-only. | Nothing changes. |
 | **Clean** | Finds caches, logs, and leftovers, shows a preview, then removes what you approve. **Whitelist** chooses caches it must never touch. | Items go to the Trash, except those reclaimed by their own tool's clean command: those are flagged in the confirmation and cannot be put back. |
-| **Uninstall** | Removes an app, its launch agents, login item, Dock tile, and known leftover files. Apps installed with Homebrew go through `brew uninstall --cask`. | The app and its leftovers go to the Trash. A Homebrew uninstall is permanent, and the confirmation says so. |
+| **Uninstall** | Removes an app, its launch agents, login item, Dock tile, and known leftover files. An app that is still open is asked to quit first, and the confirmation says so. Apps installed with Homebrew go through `brew uninstall --cask`. | The app and its leftovers go to the Trash. A Homebrew uninstall is permanent, and the confirmation says so. |
 | **Purge** | Removes old project build artifacts (`node_modules`, `target`, and similar) from your project folders, found automatically or listed under **Folders**. | **No.** These are deleted outright. |
 | **Analyze** | A disk explorer: see what is big, then move it to the Trash. | Yes, from the Trash. |
 | **Optimize** | Runs bounded maintenance tasks (refresh caches, repair broken preferences, flush DNS, and so on). Some ask for your administrator password. | Not applicable. |

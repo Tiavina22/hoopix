@@ -14,6 +14,7 @@ class _FakeUninstallInventoryRepository
     this.emissions, {
     this.approveResult,
     this.result,
+    this.running = const [],
   });
 
   final List<List<InstalledApp>> emissions;
@@ -23,8 +24,17 @@ class _FakeUninstallInventoryRepository
   final UninstallResult? result;
   final List<List<String>> approved = [];
 
+  /// Display names [runningApps] reports as open.
+  final List<String> running;
+
   @override
   Stream<List<InstalledApp>> watchInventory() => Stream.fromIterable(emissions);
+
+  @override
+  Future<List<String>> runningApps(List<InstalledApp> apps) async => [
+    for (final app in apps)
+      if (running.contains(app.displayName)) app.displayName,
+  ];
 
   @override
   Future<UninstallResult> approve(List<InstalledApp> approved) async {
@@ -289,6 +299,57 @@ void main() {
       expect(find.text('Still active after removal'), findsNothing);
     },
   );
+
+  testWidgets('says before confirming that an open app will be quit', (
+    tester,
+  ) async {
+    final repository = _FakeUninstallInventoryRepository([
+      [
+        const InstalledApp(
+          path: '/Applications/Notes.app',
+          bundleId: 'com.example.Notes',
+          displayName: 'Notes Pro',
+        ),
+      ],
+    ], running: const ['Notes Pro']);
+    await tester.pumpWidget(harness(repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Still open: Notes Pro.'), findsOneWidget);
+    expect(find.textContaining('unsaved work'), findsOneWidget);
+    expect(repository.approved, isEmpty);
+  });
+
+  testWidgets('after removal, names an app that kept running', (tester) async {
+    final repository = _FakeUninstallInventoryRepository(
+      [
+        [
+          const InstalledApp(
+            path: '/Applications/Notes.app',
+            bundleId: 'com.example.Notes',
+            displayName: 'Notes Pro',
+          ),
+        ],
+      ],
+      result: const UninstallResult(stillRunningApps: ['Notes Pro']),
+    );
+    await tester.pumpWidget(harness(repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Still open'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, 'Uninstall'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Notes Pro kept running after being asked to quit'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('a clean removal shows no warning at all', (tester) async {
     final repository = _FakeUninstallInventoryRepository([

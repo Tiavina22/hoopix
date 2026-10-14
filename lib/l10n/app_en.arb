@@ -497,6 +497,18 @@
       }
     }
   },
+  "uninstallConfirmRunning": "Still open: {apps}. It will be asked to quit first, then closed if it does not; unsaved work in it may be lost.",
+  "@uninstallConfirmRunning": {
+    "placeholders": {
+      "apps": { "type": "String" }
+    }
+  },
+  "uninstallStillRunningWarning": "{apps} kept running after being asked to quit. Its files are removed, but the open app keeps its copy in memory until you quit it.",
+  "@uninstallStillRunningWarning": {
+    "placeholders": {
+      "apps": { "type": "String" }
+    }
+  },
   "uninstallLeftBehindDismiss": "OK",
 
   "bluetoothCardTitle": "Bluetooth",
