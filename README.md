@@ -21,7 +21,9 @@ current release does not run on Intel Macs.
    [Releases](https://github.com/Tiavina22/hoopix/releases) page, and only from
    there: Hoopix deletes files, so do not run a copy from anywhere else.
 2. Optionally check it against the `SHA256SUMS` file published with it:
-   `shasum -a 256 -c SHA256SUMS`.
+   `shasum -a 256 -c SHA256SUMS`. Releases built by the Release workflow
+   (0.2.2 onward) can also be traced to the exact commit that produced them:
+   `gh attestation verify Hoopix-<version>-macos-arm64.dmg --repo Tiavina22/hoopix`.
 3. Open the disk image and drag **hoopix** onto **Applications**.
 
 **The first launch is blocked by macOS, and that is expected.** Hoopix is not
@@ -133,7 +135,15 @@ signed, for this Mac's architecture only) into `build/dist`:
 
 The script builds one architecture at a time because Xcode 27's `lipo` rejects
 the multi-architecture check Flutter 3.38 makes; see the comment at the top of
-the script.
+the script. With `HOOPIX_CODESIGN_IDENTITY` (a Developer ID) and
+`HOOPIX_NOTARY_PROFILE` (a `notarytool` profile) set, it also signs with the
+hardened runtime and notarizes the disk image.
+
+Pushing a `v*` tag runs the Release workflow
+(`.github/workflows/release.yml`): it tests, builds the same package on
+GitHub's runner, attests each artifact's provenance, and attaches them to a
+draft release whose notes are then written by hand. Every push and pull
+request runs `flutter analyze` and `flutter test` (`ci.yml`).
 
 The macOS App Sandbox is disabled in `macos/Runner/*.entitlements`: a system
 utility has to spawn `pmset`, `vm_stat`, and friends, and move or delete files

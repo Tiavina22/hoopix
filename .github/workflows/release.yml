@@ -1,0 +1,71 @@
+name: Release
+
+# A pushed v* tag builds the release on GitHub's own runner, not on a
+# developer's Mac, and records a signed provenance attestation for each
+# artifact, so a download can be checked against the exact commit and
+# workflow that produced it:
+#
+#   gh attestation verify Hoopix-<version>-macos-arm64.dmg --repo Tiavina22/hoopix
+#
+# The release is created as a draft with the artifacts attached; its notes
+# are written and it is published by hand. A release that already exists
+# is left untouched, so artifacts built elsewhere are never replaced with
+# different bytes under the same name.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: 3.38.9
+          channel: stable
+          cache: true
+
+      - name: Check the tag names the version being built
+        run: |
+          version="$(sed -n 's/^version: *\([0-9][0-9.]*\).*/\1/p' pubspec.yaml)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match pubspec.yaml version $version" >&2
+            exit 1
+          fi
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Build the release artifacts
+        run: ./scripts/build_macos_release.sh
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            build/dist/*.dmg
+            build/dist/*.zip
+
+      - name: Attach the artifacts to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "::notice::Release $GITHUB_REF_NAME already exists; its artifacts are left as they are."
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            build/dist/*.dmg build/dist/*.zip build/dist/SHA256SUMS \
+            --draft --prerelease \
+            --title "Hoopix ${GITHUB_REF_NAME#v} (pre-release)" \
+            --notes "Built by the Release workflow from $GITHUB_SHA. Write the release notes, then publish."

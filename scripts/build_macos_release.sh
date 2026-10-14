@@ -14,6 +14,17 @@
 # Intel build too, which needs Rosetta on an Apple Silicon Mac (Flutter runs
 # the x86_64 AOT compiler under it) and a `lipo -create` of the two results.
 #
+# Optional, for a Developer ID release (needs an Apple Developer account):
+#   HOOPIX_CODESIGN_IDENTITY  e.g. "Developer ID Application: Name (TEAMID)".
+#       Re-signs the app with that identity, the hardened runtime, a secure
+#       timestamp and macos/Runner/Release-Signed.entitlements (which adds
+#       the Apple Events entitlement the hardened runtime requires for the
+#       Finder and System Events calls), then signs the disk image.
+#   HOOPIX_NOTARY_PROFILE  a `xcrun notarytool store-credentials` profile.
+#       Submits the disk image for notarization, waits, and staples the
+#       ticket to it. Requires HOOPIX_CODESIGN_IDENTITY.
+# Without them the app stays ad hoc signed, as before.
+#
 # Usage: scripts/build_macos_release.sh
 
 set -euo pipefail
@@ -24,6 +35,12 @@ arch="$(uname -m)" # arm64 or x86_64
 version="$(sed -n 's/^version: *\([0-9][0-9.]*\).*/\1/p' pubspec.yaml)"
 if [ -z "$version" ]; then
   echo "Could not read the version from pubspec.yaml" >&2
+  exit 1
+fi
+
+# Checked before the build, so a misconfigured release fails in seconds.
+if [ -n "${HOOPIX_NOTARY_PROFILE:-}" ] && [ -z "${HOOPIX_CODESIGN_IDENTITY:-}" ]; then
+  echo "HOOPIX_NOTARY_PROFILE needs HOOPIX_CODESIGN_IDENTITY: only a Developer ID signature can be notarized" >&2
   exit 1
 fi
 
@@ -44,6 +61,12 @@ if [ "$built" != "$arch" ]; then
   echo "Expected a $arch binary, got: $built" >&2
   exit 1
 fi
+if [ -n "${HOOPIX_CODESIGN_IDENTITY:-}" ]; then
+  echo "Signing with $HOOPIX_CODESIGN_IDENTITY (hardened runtime)..."
+  codesign --force --deep --options runtime --timestamp \
+    --entitlements macos/Runner/Release-Signed.entitlements \
+    --sign "$HOOPIX_CODESIGN_IDENTITY" "$app"
+fi
 codesign --verify --deep --strict "$app"
 
 dist="build/dist"
@@ -60,6 +83,17 @@ hdiutil create -volname "Hoopix" -srcfolder "$dist/stage" -ov -format UDZO \
   "$dist/$name.dmg" > /dev/null
 rm -rf "$dist/stage"
 
+if [ -n "${HOOPIX_CODESIGN_IDENTITY:-}" ]; then
+  codesign --force --timestamp --sign "$HOOPIX_CODESIGN_IDENTITY" "$dist/$name.dmg"
+fi
+if [ -n "${HOOPIX_NOTARY_PROFILE:-}" ]; then
+  echo "Notarizing $name.dmg..."
+  xcrun notarytool submit "$dist/$name.dmg" \
+    --keychain-profile "$HOOPIX_NOTARY_PROFILE" --wait
+  xcrun stapler staple "$dist/$name.dmg"
+fi
+
+# Checksums last, over the final, signed and stapled files.
 (cd "$dist" && shasum -a 256 "$name.zip" "$name.dmg" > SHA256SUMS)
 
 echo
