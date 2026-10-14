@@ -8,23 +8,29 @@ import 'package:hoopix/features/purge/domain/entities/purge_constants.dart';
 /// [maxDepth] levels below [root] whose basename is a [purgeTargets] entry,
 /// or which itself carries a `CACHEDIR.TAG`.
 ///
-/// Scanning does not stop at a match — Mole's own `fd`/`find` pass does
-/// not prune there either, which is exactly why `filterNestedArtifacts`
-/// exists: a `dist/` nested inside a matched `build/` inside a matched
-/// `node_modules/` is still found, and collapsed into its outermost
-/// ancestor afterward, not by pruning the scan early. [excludedFromDescent]
-/// mirrors `fd`'s own fixed exclusion set — these are never entered, at
-/// any depth, matched or not.
+/// A match is reported and not entered, as Mole's `fd --prune` and
+/// `find ... -print -prune` do: nothing inside a `node_modules` can be a
+/// candidate of its own once the directory itself is one, and walking it
+/// anyway turned one Purge scan into tens of thousands of directory reads.
+/// [excludedFromDescent] mirrors Mole's fixed exclusion set — these are
+/// never entered, at any depth, matched or not.
 class PurgeTargetScanner {
   PurgeTargetScanner({
     Directory Function(String path)? directory,
     this.minDepth = 1,
     this.maxDepth = 6,
-  }) : _directory = directory ?? Directory.new;
+    this.timeout = const Duration(seconds: 60),
+    DateTime Function()? now,
+  }) : _directory = directory ?? Directory.new,
+       _now = now ?? DateTime.now;
 
   final Directory Function(String path) _directory;
+  final DateTime Function() _now;
   final int minDepth;
   final int maxDepth;
+
+  /// Mole's per-root scan budget (`MO_PURGE_SCAN_TIMEOUT_SEC`).
+  final Duration timeout;
 
   static const excludedFromDescent = {
     '.git',
@@ -33,11 +39,21 @@ class PurgeTargetScanner {
     'Applications',
   };
 
-  List<String> scan(String root) {
+  /// The matches under [root], or null when the walk ran past [timeout].
+  /// A partial walk is never returned: Mole publishes a root's results only
+  /// once every producer for it completed, so a timeout cannot turn a
+  /// prefix of the tree into delete candidates.
+  List<String>? scan(String root) {
+    final deadline = _now().add(timeout);
     final found = <String>[];
+    var timedOut = false;
 
     void walk(String dir, int depth) {
-      if (depth > maxDepth) return;
+      if (timedOut || depth > maxDepth) return;
+      if (_now().isAfter(deadline)) {
+        timedOut = true;
+        return;
+      }
 
       final List<FileSystemEntity> entries;
       try {
@@ -47,6 +63,7 @@ class PurgeTargetScanner {
       }
 
       for (final entity in entries) {
+        if (timedOut) return;
         if (entity is! Directory) continue;
         final name = entity.path.split('/').last;
         if (excludedFromDescent.contains(name)) continue;
@@ -54,6 +71,7 @@ class PurgeTargetScanner {
         if (depth >= minDepth &&
             (purgeTargets.contains(name) || hasCachedirTag(entity.path))) {
           found.add(entity.path);
+          continue;
         }
 
         if (depth < maxDepth) walk(entity.path, depth + 1);
@@ -61,6 +79,6 @@ class PurgeTargetScanner {
     }
 
     walk(root, 1);
-    return found;
+    return timedOut ? null : found;
   }
 }

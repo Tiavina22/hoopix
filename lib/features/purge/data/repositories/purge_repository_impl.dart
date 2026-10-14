@@ -1,17 +1,19 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:hoopix/core/platform/operation_log.dart';
 import 'package:hoopix/core/platform/size_probe.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/purge/data/datasources/purge_identity.dart';
 import 'package:hoopix/features/purge/data/repositories/purge_paths_repository_impl.dart';
-import 'package:hoopix/features/purge/domain/entities/nested_artifacts.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_activity.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_cloud_sync.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_discovery.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_plan.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_protection.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_safety.dart';
+import 'package:hoopix/features/purge/domain/entities/purge_scan.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_search_roots.dart';
 import 'package:hoopix/features/purge/domain/entities/purge_target_scanner.dart';
 import 'package:hoopix/features/purge/domain/repositories/purge_repository.dart';
@@ -19,6 +21,21 @@ import 'package:hoopix/features/purge/domain/repositories/purge_repository.dart'
 /// Sizing a project artifact is the same `du` work Clean's own caches do,
 /// and a `node_modules` tree takes just as long to walk.
 const _sizeTimeout = Duration(seconds: 60);
+
+/// Runs a computation somewhere other than the UI isolate. Production uses
+/// [Isolate.run]; tests pass one that runs in place, so their fakes can
+/// record what they were asked.
+typedef PurgeIsolateRunner =
+    Future<R> Function<R>(FutureOr<R> Function() computation);
+
+Future<R> _runOnBackgroundIsolate<R>(FutureOr<R> Function() computation) =>
+    Isolate.run(computation);
+
+/// How many candidates are checked at once (activity walk and identity
+/// snapshot). Each activity walk can read a whole `node_modules` tree for
+/// up to its own timeout, so one at a time added up to most of a minute
+/// on a real home folder.
+const _candidateConcurrency = 4;
 
 class PurgeRepositoryImpl implements PurgeRepository {
   PurgeRepositoryImpl({
@@ -31,7 +48,9 @@ class PurgeRepositoryImpl implements PurgeRepository {
     Directory Function(String path)? directory,
     OperationLog? log,
     List<String>? Function(String home)? readPurgePaths,
-  }) : _discovery = discovery ?? PurgeDiscovery(home: home),
+    PurgeIsolateRunner? runInBackground,
+  }) : _runInBackground = runInBackground ?? _runOnBackgroundIsolate,
+       _discovery = discovery ?? PurgeDiscovery(home: home),
        _readPurgePaths =
            readPurgePaths ?? PurgePathsRepositoryImpl.readLinesSync,
        _scanner = scanner ?? PurgeTargetScanner(),
@@ -51,42 +70,49 @@ class PurgeRepositoryImpl implements PurgeRepository {
   final Directory Function(String path) _directory;
   final OperationLog _log;
   final List<String>? Function(String home) _readPurgePaths;
+  final PurgeIsolateRunner _runInBackground;
 
   @override
   Stream<PurgePlan> watchPlan() async* {
-    // path -> the root it was found under, needed to re-run
-    // isSafeProjectArtifact against the same root right before deletion.
-    final foundUnderRoot = <String, String>{};
-    final roots = purgeScanRoots(
+    // Everything up to the first plan used to run on the UI isolate: on a
+    // real home folder (418 candidates) that was close to a minute with
+    // the window frozen. The walk now runs on a background isolate, and
+    // each candidate's activity walk on one of its own, a few at a time.
+    final foundUnderRoot = await _findInBackground(
+      _runInBackground,
       _readPurgePaths(home),
-      home: home,
-      discover: _discovery.discover,
+      home,
+      _discovery,
+      _scanner,
     );
-    for (final root in roots) {
-      for (final found in _scanner.scan(root)) {
-        if (foundUnderRoot.containsKey(found)) continue;
-        if (!isSafeProjectArtifact(found, root)) continue;
-        if (isProtectedPurgeArtifact(found)) continue;
-        foundUnderRoot[found] = root;
-      }
-    }
 
-    final collapsed = filterNestedArtifacts(foundUnderRoot.keys.toList());
+    final paths = foundUnderRoot.keys.toList();
+    final checked = await _mapPooled(
+      paths,
+      (path) async => (
+        // Gone, or unreadable, before its own identity could be pinned:
+        // such a path is never proposed, since it could not be safely
+        // re-verified later.
+        identity: await _identity.snapshot(path),
+        activity: await _classifyInBackground(
+          _runInBackground,
+          _activityClassifier,
+          path,
+        ),
+      ),
+    );
 
     final candidates = <PurgeCandidate>[];
-    for (final path in collapsed) {
-      final identitySnapshot = await _identity.snapshot(path);
-      // Gone, or unreadable, before its own identity could be pinned:
-      // never propose what cannot be safely re-verified later.
-      if (!identitySnapshot.isComplete) continue;
-
+    for (var i = 0; i < paths.length; i++) {
+      final (:identity, :activity) = checked[i];
+      if (!identity.isComplete) continue;
       candidates.add(
         PurgeCandidate(
-          path: path,
-          searchRoot: foundUnderRoot[path]!,
-          activity: _activityClassifier.classify(path),
-          isCloudSynced: isCloudSyncedPurgePath(path, home: home),
-          identityAtScan: identitySnapshot,
+          path: paths[i],
+          searchRoot: foundUnderRoot[paths[i]]!,
+          activity: activity,
+          isCloudSynced: isCloudSyncedPurgePath(paths[i], home: home),
+          identityAtScan: identity,
         ),
       );
     }
@@ -167,5 +193,50 @@ class PurgeRepositoryImpl implements PurgeRepository {
       return 'changed since scan';
     }
     return null;
+  }
+
+  // The two closures handed to another isolate are built here, in static
+  // functions, so each captures only its own parameters. Built inside
+  // watchPlan, they would share its context — the repository itself and
+  // the generator's state — and the isolate send would try to copy all of
+  // it.
+  static Future<Map<String, String>> _findInBackground(
+    PurgeIsolateRunner run,
+    List<String>? purgePathsLines,
+    String home,
+    PurgeDiscovery discovery,
+    PurgeTargetScanner scanner,
+  ) => run(
+    () => findPurgeArtifacts(
+      purgeScanRoots(purgePathsLines, home: home, discover: discovery.discover),
+      scanner,
+    ),
+  );
+
+  static Future<PurgeActivityState> _classifyInBackground(
+    PurgeIsolateRunner run,
+    PurgeActivityClassifier classifier,
+    String path,
+  ) => run(() => classifier.classify(path));
+
+  /// [transform] applied to every item, [_candidateConcurrency] at a time,
+  /// with the results in the items' own order.
+  static Future<List<R>> _mapPooled<T, R>(
+    List<T> items,
+    Future<R> Function(T item) transform,
+  ) async {
+    final results = List<R?>.filled(items.length, null);
+    var next = 0;
+    Future<void> worker() async {
+      while (next < items.length) {
+        final index = next++;
+        results[index] = await transform(items[index]);
+      }
+    }
+
+    await Future.wait([
+      for (var i = 0; i < _candidateConcurrency; i++) worker(),
+    ]);
+    return results.cast<R>();
   }
 }

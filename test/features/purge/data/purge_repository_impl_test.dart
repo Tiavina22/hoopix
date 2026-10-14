@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -70,6 +71,7 @@ void main() {
       home: home.path,
       discovery: _TrackingDiscovery(home.path, () => discoveryRan = true),
       readPurgePaths: (_) => ['# header', '~/clients/acme/apps'],
+      runInBackground: _inPlace,
       identity: PurgeIdentity(
         probe: FakeProcessRunner({
           'stat -f %d:%i ${artifact.parent.path}': ProcessResult.success(
@@ -96,6 +98,7 @@ void main() {
       home: home.path,
       discovery: _TrackingDiscovery(home.path, () => discoveryRan = true),
       readPurgePaths: (_) => ['# only a header'],
+      runInBackground: _inPlace,
       sizeProbe: SizeProbe(FakeProcessRunner(const {})),
     ).watchPlan().toList();
 
@@ -302,3 +305,8 @@ class _TrackingDiscovery extends PurgeDiscovery {
     return const [];
   }
 }
+
+/// Runs where it is called, so a fake's recorded calls stay visible to the
+/// test instead of happening in another isolate's copy of it.
+Future<R> _inPlace<R>(FutureOr<R> Function() computation) async =>
+    computation();

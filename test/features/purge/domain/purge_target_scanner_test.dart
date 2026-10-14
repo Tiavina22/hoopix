@@ -41,17 +41,30 @@ void main() {
     expect(result, isEmpty);
   });
 
-  test(
-    'continues scanning inside a matched target, finding a nested artifact',
-    () async {
-      await mkdir('repo/node_modules/pkg/dist');
+  test('reports a matched target without entering it, as Mole prunes', () async {
+    await mkdir('repo/node_modules/pkg/dist');
+    await mkdir('repo/node_modules/pkg/node_modules');
 
-      final result = PurgeTargetScanner().scan(root.path);
+    final result = PurgeTargetScanner().scan(root.path);
 
-      expect(result, contains('${root.path}/repo/node_modules'));
-      expect(result, contains('${root.path}/repo/node_modules/pkg/dist'));
-    },
-  );
+    expect(result, ['${root.path}/repo/node_modules']);
+  });
+
+  test('a walk past its budget reports nothing, not a partial list', () async {
+    await mkdir('a/node_modules');
+    await mkdir('b/node_modules');
+    var calls = 0;
+    final start = DateTime(2026, 1, 1);
+
+    final result = PurgeTargetScanner(
+      timeout: const Duration(seconds: 60),
+      // Every look at the clock moves it 40s on: the second directory
+      // read is already past the budget.
+      now: () => start.add(Duration(seconds: 40 * calls++)),
+    ).scan(root.path);
+
+    expect(result, isNull);
+  });
 
   test('never descends into .git, Library, .Trash, or Applications', () async {
     await mkdir('.git/node_modules');
