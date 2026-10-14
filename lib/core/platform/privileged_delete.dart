@@ -17,6 +17,14 @@ class PrivilegedDelete {
 
   final MethodChannel channel;
 
+  /// The refusal the native side gives a path below a parent folder the
+  /// user can write: a root `rm` there could be redirected, so the caller
+  /// removes it with the user's own permissions instead — Mole's downgrade
+  /// in `safe_sudo_remove`. Must match `PrivilegedDeleteChannel`'s own
+  /// `downgradeReason` exactly.
+  static const downgradeReason =
+      'downgrade: a parent folder is writable by you';
+
   /// Deletes each of [paths] after one administrator-privileges prompt for
   /// the whole batch.
   ///

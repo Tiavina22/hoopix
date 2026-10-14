@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hoopix/core/platform/privileged_delete.dart';
 import 'package:hoopix/core/process/process_failure.dart';
 import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
@@ -765,6 +766,66 @@ void main() {
       candidate.revalidatorKey,
       MacosInstallerLocalDataSource.revalidatorKey,
     );
+  });
+
+  group('a privileged path below a parent the user can write', () {
+    const downgraded = '/Library/Logs/DiagnosticReports/old.ips';
+    const asRoot = '/private/var/log/old.log';
+    const candidates = [
+      CleanCandidate(
+        path: downgraded,
+        section: 'System',
+        requiresPrivilegedDeletion: true,
+      ),
+      CleanCandidate(
+        path: asRoot,
+        section: 'System',
+        requiresPrivilegedDeletion: true,
+      ),
+    ];
+
+    test('goes to the Trash with the user\'s own permissions, never as '
+        'root', () async {
+      messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+        return {downgraded: PrivilegedDelete.downgradeReason};
+      });
+      final trashCalls = <List<Object?>>[];
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        trashCalls.add((call.arguments as Map)['paths'] as List);
+        return <Object?, Object?>{};
+      });
+
+      final failures = await CleanRepositoryImpl(
+        home: home.path,
+      ).approve(candidates);
+
+      expect(failures, isEmpty);
+      expect(trashCalls, [
+        [downgraded],
+      ]);
+      final outcomes = {for (final e in readLog()) e['path']: e['outcome']};
+      expect(outcomes[downgraded], 'trashed');
+      expect(outcomes[asRoot], 'cleared');
+    });
+
+    test('a downgraded path the Trash refuses is reported, not retried as '
+        'root', () async {
+      var privilegedCalls = 0;
+      messenger.setMockMethodCallHandler(privilegedDeleteChannel, (call) async {
+        privilegedCalls++;
+        return {downgraded: PrivilegedDelete.downgradeReason};
+      });
+      messenger.setMockMethodCallHandler(trashChannel, (call) async {
+        return {downgraded: 'permission denied'};
+      });
+
+      final failures = await CleanRepositoryImpl(
+        home: home.path,
+      ).approve(candidates);
+
+      expect(failures, {downgraded: 'permission denied'});
+      expect(privilegedCalls, 1);
+    });
   });
 
   test(

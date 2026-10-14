@@ -78,42 +78,73 @@ final class PrivilegedDeleteChannel {
     "/Library/Apple/usr/share/rosetta/rosetta_update_bundle",
   ]
 
+  /// The refusal that tells the Dart side to remove the path with the
+  /// user's own permissions instead (through the Trash), Mole's downgrade
+  /// for a privileged delete below a mutable parent. Matched exactly by
+  /// `PrivilegedDelete.downgradeReason`.
+  static let downgradeReason = "downgrade: a parent folder is writable by you"
+
   private static func refusalReason(for path: String) -> String? {
     if let invalid = validate(path) { return invalid }
     guard isAllowedTarget(path) else {
       return "path is outside the allowed system-cleanup roots"
     }
+    if hasMutableAncestor((path as NSString).standardizingPath) {
+      return downgradeReason
+    }
     return nil
+  }
+
+  /// Port of Mole's `_mole_privileged_path_has_mutable_ancestor`: a root
+  /// `rm` resolves every parent of its target, so a parent the user can
+  /// rename or replace could redirect it anywhere on the disk. Every
+  /// parent up to `/` must be a real directory (not a symlink), owned by
+  /// root, with no group or other write bit, and not writable by this
+  /// process's user — `access` also sees ACLs. Unreadable metadata counts
+  /// as mutable. This runs as the user, before any elevation, and a user
+  /// cannot change a parent that passes, so the answer still holds when
+  /// the root `rm` runs.
+  private static func hasMutableAncestor(_ path: String) -> Bool {
+    var probe = (path as NSString).deletingLastPathComponent
+    if probe.isEmpty { probe = "/" }
+    while true {
+      var info = stat()
+      if lstat(probe, &info) != 0 { return true }
+      if (info.st_mode & S_IFMT) == S_IFLNK { return true }
+      if info.st_uid != 0 { return true }
+      if (info.st_mode & 0o022) != 0 { return true }
+      if access(probe, W_OK) == 0 { return true }
+      if probe == "/" { return false }
+      probe = (probe as NSString).deletingLastPathComponent
+      if probe.isEmpty { probe = "/" }
+    }
   }
 
   /// Roots whose *individual files* Mole's own `safe_sudo_find_delete`
   /// sweeps by age and name (`clean_deep_system`, `lib/clean/system.sh`).
   /// Unlike `allowedRoots`, a path here is never removed recursively: it is
   /// deleted with `rm -f`, so a directory handed here fails instead of
-  /// taking a tree with it. Depth is capped at the same 5 levels the scan
-  /// contract allows, so no deeply nested path can be reached through one.
+  /// taking a tree with it. Each root is capped at the depth its own
+  /// Dart-side sweep walks, so no deeper path can be reached through one.
   ///
-  /// Every root here is root-owned and not writable by the invoking user.
   /// `/Library/Caches` is deliberately absent even though Mole sweeps it:
   /// it is `drwxrwxrwt`, so a privileged path-based delete would cross an
-  /// ancestor the user can write, which is exactly what Mole's own
-  /// `_mole_privileged_path_has_mutable_ancestor` refuses — it downgrades
-  /// those to an unprivileged removal, and so does hoopix, by routing them
-  /// to the Trash instead of here.
-  private static let allowedSweepRoots = [
-    "/Library/Logs/DiagnosticReports",
-    "/Library/Logs/Adobe",
-    "/Library/Logs/CreativeCloud",
-    "/private/var/log",
+  /// ancestor the user can write. Being listed here is not enough either:
+  /// `hasMutableAncestor` still checks every parent, because a root that
+  /// is safe on one Mac is not on another (`DiagnosticReports` is
+  /// group-writable for members of `_analyticsusers`).
+  private static let allowedSweepRoots: [(root: String, maximumDepth: Int)] = [
+    ("/Library/Logs/DiagnosticReports", 1),
+    ("/Library/Logs/Adobe", 5),
+    ("/Library/Logs/CreativeCloud", 5),
+    ("/private/var/log", 3),
     // Orphaned system services (clean_orphaned_system_services): a
     // LaunchDaemon/LaunchAgent plist or a PrivilegedHelperTools file, one
     // path component deep, never the directory itself.
-    "/Library/LaunchDaemons",
-    "/Library/LaunchAgents",
-    "/Library/PrivilegedHelperTools",
+    ("/Library/LaunchDaemons", 1),
+    ("/Library/LaunchAgents", 1),
+    ("/Library/PrivilegedHelperTools", 1),
   ]
-
-  private static let maximumSweepDepth = 5
 
   private static func isAllowedTarget(_ path: String) -> Bool {
     let clean = (path as NSString).standardizingPath
@@ -124,16 +155,18 @@ final class PrivilegedDeleteChannel {
     return isWithinSweepRoots(clean)
   }
 
-  /// A path strictly below one of `allowedSweepRoots`, at most
-  /// `maximumSweepDepth` components down. The root itself never qualifies.
+  /// A path strictly below one of `allowedSweepRoots`, no deeper than that
+  /// root's own depth — the same depth the Dart-side sweep for it walks,
+  /// so this barrier never allows more than the scan can propose. The root
+  /// itself never qualifies.
   private static func isWithinSweepRoots(_ path: String) -> Bool {
     let clean = (path as NSString).standardizingPath
     guard
-      let root = allowedSweepRoots.first(where: { clean.hasPrefix($0 + "/") })
+      let entry = allowedSweepRoots.first(where: { clean.hasPrefix($0.root + "/") })
     else { return false }
-    let relative = clean.dropFirst(root.count + 1)
+    let relative = clean.dropFirst(entry.root.count + 1)
     let depth = relative.split(separator: "/").count
-    return depth >= 1 && depth <= maximumSweepDepth
+    return depth >= 1 && depth <= entry.maximumDepth
   }
 
   /// A stale macOS installer app Software Update itself stages under

@@ -285,16 +285,35 @@ class CleanRepositoryImpl implements CleanRepository {
     failures.addAll(liveCaches);
     byTrash.removeWhere((candidate) => liveCaches.containsKey(candidate.path));
 
-    failures.addAll({
-      ...await _trash.moveToTrash([
+    failures.addAll(
+      await _trash.moveToTrash([
         for (final candidate in byTrash) candidate.path,
       ]),
-      // One administrator-privileges prompt for the whole batch, not one
-      // per path — approving several System items should not ask twice.
-      ...await _privilegedDelete.deletePaths([
-        for (final candidate in byPrivilegedDelete) candidate.path,
-      ]),
+    );
+
+    // One administrator-privileges prompt for the whole batch, not one per
+    // path — approving several System items should not ask twice. A path
+    // below a parent folder the user can write is never removed as root:
+    // the native side hands it back, and it goes to the Trash with the
+    // user's own permissions instead, Mole's downgrade.
+    final privileged = await _privilegedDelete.deletePaths([
+      for (final candidate in byPrivilegedDelete) candidate.path,
+    ]);
+    final downgraded = [
+      for (final entry in privileged.entries)
+        if (entry.value == PrivilegedDelete.downgradeReason) entry.key,
+    ];
+    final downgradeFailures = await _trash.moveToTrash(downgraded);
+    failures.addAll({
+      for (final entry in privileged.entries)
+        if (entry.value != PrivilegedDelete.downgradeReason)
+          entry.key: entry.value,
+      ...downgradeFailures,
     });
+    final trashedInstead = {
+      for (final path in downgraded)
+        if (!downgradeFailures.containsKey(path)) path,
+    };
     // Sequential: these run real cache-clean commands, which can be I/O
     // heavy, so overlapping several is worth avoiding rather than saving.
     for (final candidate in byCommand) {
@@ -308,7 +327,7 @@ class CleanRepositoryImpl implements CleanRepository {
         command: 'clean',
         outcome: refusal != null
             ? OperationOutcome.refused
-            : candidate.isRecoverable
+            : candidate.isRecoverable || trashedInstead.contains(candidate.path)
             ? OperationOutcome.trashed
             : OperationOutcome.cleared,
         targetPath: candidate.path,
