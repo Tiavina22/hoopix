@@ -11,6 +11,12 @@ import 'package:hoopix/features/optimize/domain/entities/optimize_task.dart';
 /// once its combined size (database plus WAL/SHM sidecars) crosses 100MB.
 /// `ZCREATIONDATE` is CoreData's own absolute-time epoch — seconds since
 /// 2001-01-01, not Unix time — hence the `strftime` offset in the delete.
+///
+/// The `-wal` and `-shm` sidecars are only measured, never removed: the
+/// database's owner can hold committed transactions only in its WAL, and
+/// unlinking it loses them, or corrupts a database the daemon still has
+/// open. SQLite checkpoints and recovers its own sidecars when `sqlite3`
+/// opens the file, which is what Mole's task now relies on as well.
 class CoreduetCleanupTask implements OptimizeTaskRunner {
   CoreduetCleanupTask({required this.home, ProcessRunner? probe})
     : _probe = probe ?? const ProcessRunner(timeout: Duration(seconds: 20));
@@ -53,27 +59,13 @@ class CoreduetCleanupTask implements OptimizeTaskRunner {
       );
     }
 
-    var applied = 0;
-    var failed = 0;
-    for (final sidecar in [walPath, shmPath]) {
-      if (FileSystemEntity.typeSync(sidecar, followLinks: false) !=
-          FileSystemEntityType.file) {
-        continue;
-      }
-      try {
-        await File(sidecar).delete();
-        applied++;
-      } on FileSystemException {
-        failed++;
-      }
-    }
-
     final clean = await _probe.run('sqlite3', [dbPath, _deleteOldRows]);
-    clean.isSuccess ? applied++ : failed++;
 
     return OptimizeTaskResult(
       task: task,
-      outcome: optimizeOutcomeFromCounts(applied: applied, failed: failed),
+      outcome: clean.isSuccess
+          ? OptimizeOutcome.applied
+          : OptimizeOutcome.failed,
     );
   }
 

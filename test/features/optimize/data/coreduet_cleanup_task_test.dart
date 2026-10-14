@@ -75,7 +75,8 @@ void main() {
     expect(result.outcome, OptimizeOutcome.unavailable);
   });
 
-  test('removes WAL/SHM sidecars and vacuums the database', () async {
+  test('trims the database through sqlite3 and never unlinks its WAL or '
+      'SHM, which can hold committed transactions', () async {
     await writeSized(dbPath, _bigContent);
     final wal = File('$dbPath-wal');
     await wal.create();
@@ -95,8 +96,8 @@ void main() {
     ).run();
 
     expect(result.outcome, OptimizeOutcome.applied);
-    expect(wal.existsSync(), isFalse);
-    expect(shm.existsSync(), isFalse);
+    expect(wal.existsSync(), isTrue);
+    expect(shm.existsSync(), isTrue);
   });
 
   test('reports failed when the delete does not succeed', () async {
