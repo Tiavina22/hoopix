@@ -6,6 +6,8 @@ import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 
+import '../../../support/fake_process_runner.dart';
+
 class _FakeProbe extends ProcessRunner {
   _FakeProbe(this.available);
 
@@ -90,6 +92,97 @@ void main() {
         expect(result.paths, contains('${home.path}/.npm/_npx/entry'));
       },
     );
+  });
+
+  group('the root a tool reports', () {
+    ProcessResult ok(String out) => ProcessResult.success(out);
+
+    DeveloperToolsLocalDataSource source(Map<String, ProcessResult> answers) =>
+        DeveloperToolsLocalDataSource(
+          home: home.path,
+          probe: FakeProcessRunner(answers),
+        );
+
+    test('npm cleans the cache it is configured for, and that is the root '
+        'the plan checks', () async {
+      await makeDir('.npm/_logs/old');
+      await makeDir('Work/npm-cache/_npx/entry');
+      final relocated = '${home.path}/Work/npm-cache';
+
+      final result = await source({
+        'npm --version': ok('10.0.0'),
+        'npm config get cache': ok('$relocated\n'),
+      }).enumerate();
+
+      expect(result.ownerCommands.keys, [relocated]);
+      expect(result.paths, isNot(contains('${home.path}/.npm')));
+      expect(
+        result.revalidatorKeys[relocated],
+        DeveloperToolsLocalDataSource.npmRevalidatorKey,
+      );
+      // Residual leaves under both the default and the configured root.
+      expect(result.paths, contains('${home.path}/.npm/_logs/old'));
+      expect(result.paths, contains('$relocated/_npx/entry'));
+    });
+
+    test('a tool pointed at home or Library itself gets no command', () async {
+      for (final root in [home.path, '${home.path}/Library']) {
+        await makeDir('Library');
+        final result = await source({
+          'npm --version': ok('10.0.0'),
+          'npm config get cache': ok('$root\n'),
+          'bun --version': ok('1.1.0'),
+          'bun pm cache': ok('$root\n'),
+        }).enumerate();
+
+        expect(result.ownerCommands, isEmpty, reason: root);
+      }
+    });
+
+    test('bun cleans the cache it reports, and the default one it left is '
+        'swept as orphaned', () async {
+      await makeDir('.bun/install/cache/old-pkg');
+      await makeDir('Work/bun-cache');
+      final relocated = '${home.path}/Work/bun-cache';
+
+      final result = await source({
+        'bun --version': ok('1.1.0'),
+        'bun pm cache': ok('$relocated\n'),
+      }).enumerate();
+
+      expect(result.ownerCommands[relocated], ['bun', 'pm', 'cache', 'rm']);
+      expect(
+        result.paths,
+        contains('${home.path}/.bun/install/cache/old-pkg'),
+      );
+    });
+
+    test('stillOwnerRoot confirms the root only while the tool still '
+        'reports it', () async {
+      await makeDir('.npm');
+      final npmRoot = '${home.path}/.npm';
+      const key = DeveloperToolsLocalDataSource.npmRevalidatorKey;
+
+      expect(
+        await source({
+          'npm config get cache': ok('$npmRoot\n'),
+        }).stillOwnerRoot(npmRoot, key),
+        isTrue,
+      );
+      expect(
+        await source({
+          'npm config get cache': ok('/Volumes/Other/cache\n'),
+        }).stillOwnerRoot(npmRoot, key),
+        isFalse,
+      );
+      expect(await source(const {}).stillOwnerRoot(npmRoot, key), isFalse);
+      expect(
+        await source({
+          'npm config get cache': ok('$npmRoot\n'),
+        }).stillOwnerRoot(npmRoot, 'some-other-key'),
+        isFalse,
+      );
+    });
   });
 
   group('corepack', () {

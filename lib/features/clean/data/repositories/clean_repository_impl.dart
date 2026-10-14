@@ -381,5 +381,9 @@ class CleanRepositoryImpl implements CleanRepository {
     OrphanedSystemServicesLocalDataSource.revalidatorKey:
         _orphanedSystemServices.stillEligible,
     InstallerFilesLocalDataSource.revalidatorKey: _installerFiles.stillEligible,
+    DeveloperToolsLocalDataSource.npmRevalidatorKey: (path) => _developerTools
+        .stillOwnerRoot(path, DeveloperToolsLocalDataSource.npmRevalidatorKey),
+    DeveloperToolsLocalDataSource.bunRevalidatorKey: (path) => _developerTools
+        .stillOwnerRoot(path, DeveloperToolsLocalDataSource.bunRevalidatorKey),
   };
 }

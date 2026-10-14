@@ -21,9 +21,13 @@ import 'package:hoopix/features/clean/domain/usecases/build_clean_plan.dart';
 /// `PnpmStoreLocalDataSource` — it needs a real subprocess round trip to
 /// resolve the store path, not just a `--version` probe.
 ///
-/// Not ported: `npm config get cache` / `bun pm cache` custom-path
-/// resolution is skipped in favor of each tool's well-known default, so a
-/// user with a relocated cache keeps it out of this sweep.
+/// An owner command cleans whatever root its tool is configured for, not
+/// the directory hoopix happens to show, so npm and bun are asked first
+/// (`npm config get cache`, `bun pm cache`) exactly as Mole does: that
+/// reported root is the candidate, and the whitelist and protection rules
+/// apply to it. Each one is asked again right before its command runs
+/// ([stillOwnerRoot]); a tool that now reports a different root is
+/// refused rather than trusted.
 class DeveloperToolsLocalDataSource {
   DeveloperToolsLocalDataSource({
     required this.home,
@@ -38,13 +42,22 @@ class DeveloperToolsLocalDataSource {
 
   static const developerTools = 'Developer tools';
 
+  /// Name [stillOwnerRoot] to `CleanRepositoryImpl`, through
+  /// [CleanCandidate.revalidatorKey].
+  static const npmRevalidatorKey = 'npm-cache-root';
+  static const bunRevalidatorKey = 'bun-cache-root';
+
+  static const _npmRootQuery = ['npm', 'config', 'get', 'cache'];
+  static const _bunRootQuery = ['bun', 'pm', 'cache'];
+
   Future<CleanSectionTargets> enumerate() async {
     final paths = <String>[];
     final ownerCommands = <String, List<String>>{};
+    final revalidatorKeys = <String, String>{};
 
-    await _addNpm(paths, ownerCommands);
+    await _addNpm(paths, ownerCommands, revalidatorKeys);
     await _addCorepack(paths, ownerCommands);
-    await _addBun(paths, ownerCommands);
+    await _addBun(paths, ownerCommands, revalidatorKeys);
     paths.addAll(_childrenOf('$home/.tnpm/_cacache'));
     paths.addAll(_childrenOf('$home/.tnpm/_logs'));
     paths.addAll(_childrenOf('$home/.yarn/cache'));
@@ -54,24 +67,51 @@ class DeveloperToolsLocalDataSource {
       developerTools,
       paths,
       ownerCommands: ownerCommands,
+      revalidatorKeys: revalidatorKeys,
     );
   }
 
-  /// `npm cache clean --force` only when npm is on PATH — otherwise Mole
-  /// leaves the whole cache root for manual review, not a filesystem sweep,
-  /// since without npm nothing can tell a live index from garbage. The
-  /// residual leaves it never removes are swept unconditionally either way.
+  /// Whether [path] is still the root its tool reports, asked again at the
+  /// moment its owner command would run.
+  Future<bool> stillOwnerRoot(String path, String key) async {
+    final query = switch (key) {
+      npmRevalidatorKey => _npmRootQuery,
+      bunRevalidatorKey => _bunRootQuery,
+      _ => null,
+    };
+    if (query == null) return false;
+    final root = await _reportedRoot(query);
+    return root != null && _samePlace(root, path);
+  }
+
+  /// Port of Mole's `clean_dev_npm`: `npm cache clean --force` on the root
+  /// npm reports, only when npm runs at all — otherwise Mole leaves the
+  /// whole cache root for manual review, not a filesystem sweep, since
+  /// without npm nothing can tell a live index from garbage. The residual
+  /// leaves the command never removes are swept under the default root,
+  /// and under the reported one too when it is somewhere else.
   Future<void> _addNpm(
     List<String> paths,
     Map<String, List<String>> ownerCommands,
+    Map<String, String> revalidatorKeys,
   ) async {
-    final npmCache = '$home/.npm';
-    if (_isRealDirectory(npmCache) && await _available('npm')) {
-      paths.add(npmCache);
-      ownerCommands[npmCache] = const ['npm', 'cache', 'clean', '--force'];
+    final defaultCache = '$home/.npm';
+    var roots = [defaultCache];
+    if (await _available('npm')) {
+      final root = await _reportedRoot(_npmRootQuery) ?? defaultCache;
+      if (!_isUnsafeRoot(root) && _isRealDirectory(root)) {
+        paths.add(root);
+        ownerCommands[root] = const ['npm', 'cache', 'clean', '--force'];
+        revalidatorKeys[root] = npmRevalidatorKey;
+      }
+      if (!_samePlace(root, defaultCache) && !_isUnsafeRoot(root)) {
+        roots = [defaultCache, root];
+      }
     }
-    for (final leaf in ['_cacache', '_npx', '_logs', '_prebuilds']) {
-      paths.addAll(_childrenOf('$npmCache/$leaf'));
+    for (final root in roots) {
+      for (final leaf in ['_cacache', '_npx', '_logs', '_prebuilds']) {
+        paths.addAll(_childrenOf('$root/$leaf'));
+      }
     }
   }
 
@@ -96,18 +136,59 @@ class DeveloperToolsLocalDataSource {
     }
   }
 
+  /// Port of the bun half of `clean_dev_npm`: `bun pm cache rm` on the
+  /// root bun reports; a default cache left behind after bun moved
+  /// elsewhere is swept as orphaned, and without bun the default cache is
+  /// swept directly.
   Future<void> _addBun(
     List<String> paths,
     Map<String, List<String>> ownerCommands,
+    Map<String, String> revalidatorKeys,
   ) async {
-    final bunCache = '$home/.bun/install/cache';
-    if (!_isRealDirectory(bunCache)) return;
+    final defaultCache = '$home/.bun/install/cache';
+    if (!await _available('bun')) {
+      paths.addAll(_childrenOf(defaultCache));
+      return;
+    }
 
-    if (await _available('bun')) {
-      paths.add(bunCache);
-      ownerCommands[bunCache] = const ['bun', 'pm', 'cache', 'rm'];
-    } else {
-      paths.addAll(_childrenOf(bunCache));
+    final root = await _reportedRoot(_bunRootQuery) ?? defaultCache;
+    if (!_isUnsafeRoot(root) && _isRealDirectory(root)) {
+      paths.add(root);
+      ownerCommands[root] = const ['bun', 'pm', 'cache', 'rm'];
+      revalidatorKeys[root] = bunRevalidatorKey;
+    }
+    if (!_samePlace(root, defaultCache)) {
+      paths.addAll(_childrenOf(defaultCache));
+    }
+  }
+
+  /// The absolute root a tool prints for [query], or null when it cannot
+  /// say: not installed, timed out, or an answer that is not a path.
+  Future<String?> _reportedRoot(List<String> query) async {
+    final result = await _probe.run(query.first, query.sublist(1));
+    if (!result.isSuccess) return null;
+    final lines = result.stdout!.trim().split('\n');
+    final root = lines.last.trim();
+    if (!root.startsWith('/')) return null;
+    return root.length > 1 && root.endsWith('/')
+        ? root.substring(0, root.length - 1)
+        : root;
+  }
+
+  /// A root no cache command may ever be pointed at: home itself, its
+  /// Library, or the whole disk — Mole's own unsafe-root guard.
+  bool _isUnsafeRoot(String root) =>
+      root == '/' || root == home || root == '$home/Library';
+
+  /// The same directory once symlinks are resolved, as Mole compares with
+  /// `pwd -P`; spelling alone when either cannot be resolved.
+  bool _samePlace(String a, String b) {
+    if (a == b) return true;
+    try {
+      return _directory(a).resolveSymbolicLinksSync() ==
+          _directory(b).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      return false;
     }
   }
 

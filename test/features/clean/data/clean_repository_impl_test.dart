@@ -8,6 +8,7 @@ import 'package:hoopix/core/process/process_guard.dart';
 import 'package:hoopix/core/process/process_runner.dart';
 import 'package:hoopix/features/clean/data/datasources/browser_profile_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/cloud_storage_local_datasource.dart';
+import 'package:hoopix/features/clean/data/datasources/developer_tools_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/final_cut_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/jianying_pro_generated_caches_local_datasource.dart';
 import 'package:hoopix/features/clean/data/datasources/live_cache_guard.dart';
@@ -461,6 +462,60 @@ void main() {
     final candidate = plan.candidates.singleWhere((c) => c.path == cacheRoot);
     expect(candidate.ownerCommand, isNotNull);
     expect(candidate.recheckProcessGuard?.exactNames, ['tart']);
+  });
+
+  group('an owner command whose tool reports its own root', () {
+    CleanCandidate npmCandidate(String root) => CleanCandidate(
+      path: root,
+      section: DeveloperToolsLocalDataSource.developerTools,
+      ownerCommand: const ['npm', 'cache', 'clean', '--force'],
+      revalidatorKey: DeveloperToolsLocalDataSource.npmRevalidatorKey,
+    );
+
+    test('runs only when the tool still reports the root that was shown', () async {
+      final root = '${home.path}/.npm';
+      await Directory(root).create(recursive: true);
+      final commands = <String>[];
+      final repository = CleanRepositoryImpl(
+        home: home.path,
+        developerTools: DeveloperToolsLocalDataSource(
+          home: home.path,
+          probe: FakeProcessRunner({
+            'npm config get cache': ProcessResult.success('$root\n'),
+          }),
+        ),
+        ownerCommandRunner: _CommandRecorder(commands),
+      );
+
+      final failures = await repository.approve([npmCandidate(root)]);
+
+      expect(failures, isEmpty);
+      expect(commands, ['npm cache clean --force']);
+    });
+
+    test('is refused when the tool now reports somewhere else, and never '
+        'runs', () async {
+      final root = '${home.path}/.npm';
+      await Directory(root).create(recursive: true);
+      final commands = <String>[];
+      final repository = CleanRepositoryImpl(
+        home: home.path,
+        developerTools: DeveloperToolsLocalDataSource(
+          home: home.path,
+          probe: FakeProcessRunner({
+            'npm config get cache': ProcessResult.success(
+              '${home.path}/Projects\n',
+            ),
+          }),
+        ),
+        ownerCommandRunner: _CommandRecorder(commands),
+      );
+
+      final failures = await repository.approve([npmCandidate(root)]);
+
+      expect(failures[root], 'skipped: no longer eligible');
+      expect(commands, isEmpty);
+    });
   });
 
   test('refuses an owner command whose recheck guard finds the process now '
@@ -1050,4 +1105,17 @@ void main() {
 
     expect(failures, contains(candidate.path));
   });
+}
+
+/// Records each owner command it is asked to run, and succeeds.
+class _CommandRecorder extends ProcessRunner {
+  _CommandRecorder(this.commands);
+
+  final List<String> commands;
+
+  @override
+  Future<ProcessResult> run(String executable, List<String> arguments) async {
+    commands.add([executable, ...arguments].join(' '));
+    return ProcessResult.success('');
+  }
 }
