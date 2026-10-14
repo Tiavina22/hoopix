@@ -17,8 +17,8 @@ import FlutterMacOS
 /// itself, so this can never become a general "run this as root" backdoor
 /// even if the Dart side is wrong. The one caller-supplied value ever
 /// interpolated — the invoking user's own uid, for
-/// `reset_user_permissions` — is validated as a plain decimal number
-/// first. Mirrors `PrivilegedDeleteChannel`'s shape and reasoning, for
+/// `reset_user_permissions` — must equal this process's own uid, and is
+/// never root's. Mirrors `PrivilegedDeleteChannel`'s shape and reasoning, for
 /// commands instead of path deletions.
 final class PrivilegedCommandChannel {
   static let channelName = "fit.hoopix/privileged_command"
@@ -99,8 +99,11 @@ final class PrivilegedCommandChannel {
       // opt_network_stack_optimize.
       return "arp -a -d"
     case "reset_user_permissions":
-      // opt_disk_permissions_repair.
-      guard let uid = arguments["uid"], isValidUid(uid) else { return nil }
+      // opt_disk_permissions_repair. Only ever for the user running hoopix:
+      // the uid Dart sends must be this process's own, and never root's, so
+      // a wrong value on the Dart side cannot aim a root permission reset
+      // at another account.
+      guard let uid = arguments["uid"], isOwnUid(uid) else { return nil }
       return "diskutil resetUserPermissions / \(uid)"
     case "rebuild_spotlight_index":
       // opt_spotlight_index_optimize.
@@ -113,8 +116,9 @@ final class PrivilegedCommandChannel {
     }
   }
 
-  private static func isValidUid(_ value: String) -> Bool {
-    !value.isEmpty && value.allSatisfy { $0.isASCII && $0.isNumber }
+  private static func isOwnUid(_ value: String) -> Bool {
+    let own = getuid()
+    return own != 0 && value == String(own)
   }
 
   /// Escapes [value] as a single AppleScript string literal (`\` and `"`
